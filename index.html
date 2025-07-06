@@ -14,18 +14,23 @@
       margin: 10px 0;
       padding: 6px 10px;
     }
+    #leanteam-total {
+      font-weight: bold;
+      font-size: 1.2em; /* slightly bigger */
+      margin-bottom: 10px;
+    }
     #result {
-      margin-top: 20px;
       white-space: pre-line; /* preserve line breaks */
       font-weight: bold;
     }
   </style>
 </head>
 <body>
-  <h2>Karma Tracker Multiple Users</h2>
+  <h2>Leanteam RKL Karma</h2>
 
   <button onclick="fetchAllKarma()">Refresh All</button>
 
+  <div id="leanteam-total">Leanteam Total: Loading...</div>
   <div id="result">Loading...</div>
 
   <script>
@@ -60,7 +65,9 @@
 
     async function fetchAllKarma() {
       const output = document.getElementById('result');
+      const totalOutput = document.getElementById('leanteam-total');
       output.innerText = 'Loading user list...';
+      totalOutput.innerText = 'Leanteam Total: Loading...';
 
       try {
         // Fetch CSV
@@ -69,11 +76,14 @@
 
         output.innerText = 'Fetching karma data...\n';
 
+        let totalKarma = 0;
+
         // Map once over users to get karma or not active
         const karmaPromises = users.map(async user => {
           if (user['playing?'].toLowerCase() === 'yes') {
             const karma = await fetchKarmaForUser(user['user id']);
             if (karma !== null) {
+              totalKarma += Number(karma);
               return `${user['user @']}: ${karma}`;
             } else {
               return `${user['user @']}: error fetching karma`;
@@ -85,8 +95,10 @@
 
         const results = await Promise.all(karmaPromises);
 
+        totalOutput.innerText = `Leanteam Total: ${totalKarma}`;
         output.innerText = results.join('\n');
       } catch (err) {
+        totalOutput.innerText = 'Leanteam Total: Error loading total';
         output.innerText = 'Error loading users or karma data.';
         console.error(err);
       }
