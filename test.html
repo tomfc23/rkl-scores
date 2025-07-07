@@ -66,6 +66,12 @@
     const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
     const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
 
+    const proxies = [
+      url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,  // returns { contents }
+      url => `https://corsproxy.io/?${encodeURIComponent(url)}`,              // returns raw JSON
+      url => `https://thingproxy.freeboard.io/fetch/${url}`                   // returns raw JSON
+    ];
+
     let todaysGames = [], allPlayers = [], lastSelectedIndex = null;
     const karmaCache = new Map();
 
@@ -73,22 +79,33 @@
       return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    async function fetchKarma(userId, retries = 3) {
+    async function fetchKarma(userId) {
       if (karmaCache.has(userId)) return karmaCache.get(userId);
       const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
-      for (let i = 0; i < retries; i++) {
+
+      for (let i = 0; i < proxies.length; i++) {
         try {
+          const proxyUrl = proxies[i](apiUrl);
           const response = await axios.get(proxyUrl, { timeout: 4000 });
-          const data = JSON.parse(response.data.contents);
+
+          let data;
+          if (i === 0) {
+            // allorigins wraps response
+            data = JSON.parse(response.data.contents);
+          } else {
+            // others return raw JSON
+            data = response.data;
+          }
+
           const delta = data?.stats?.karmaDelta;
           const val = typeof delta === 'number' ? delta : Number(delta) || 0;
           karmaCache.set(userId, val);
           return val;
         } catch (err) {
-          await delay(500);
+          await delay(500); // wait then try next proxy
         }
       }
+
       return null;
     }
 
@@ -164,7 +181,6 @@
       const team1 = await processRoster(team1Players);
       const team2 = await processRoster(team2Players);
 
-      // Retry full game if both teams return 0 score with no data
       if (retryDepth < 1 && (team1.total === 0 && team1.lines.length === 0 || team2.total === 0 && team2.lines.length === 0)) {
         await delay(500);
         return await loadSelectedGame(index, retryDepth + 1);
