@@ -10,6 +10,21 @@
       font-family: Arial, sans-serif;
       padding: 20px;
     }
+    .refresh-button {
+      margin-bottom: 20px;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: bold;
+      background-color: #28a745;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .refresh-button:disabled {
+      background-color: #aaa;
+      cursor: not-allowed;
+    }
     .game-container {
       border: 1px solid #ccc;
       padding: 12px;
@@ -38,6 +53,7 @@
 </head>
 <body>
   <h2>Karma League - Today's Games</h2>
+  <button id="refreshBtn" class="refresh-button" disabled>Refresh Scores</button>
   <div id="games-schedule">Loading games...</div>
 
   <script>
@@ -60,8 +76,8 @@
     }
 
     function getTodayString() {
-      const today = new Date();
-      const est = new Date(today.toLocaleString("en-US", { timeZone: "America/New_York" }));
+      const now = new Date();
+      const est = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
       if (est.getHours() < 7) est.setDate(est.getDate() - 1);
       const month = est.getMonth() + 1;
       const day = est.getDate();
@@ -73,9 +89,7 @@
     }
 
     async function fetchKarma(userId, retries = 3) {
-      if (karmaCache.has(userId)) {
-        return karmaCache.get(userId);
-      }
+      if (karmaCache.has(userId)) return karmaCache.get(userId);
 
       const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
       const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
@@ -185,7 +199,26 @@
       }
     }
 
-    loadTodayGames();
+    function setRefreshButtonState(enabled) {
+      const btn = document.getElementById('refreshBtn');
+      btn.disabled = !enabled;
+      btn.innerText = enabled ? 'Refresh Scores' : 'Please wait...';
+    }
+
+    async function handleRefreshClick() {
+      setRefreshButtonState(false);
+      karmaCache.clear(); // Optional: clear cache on refresh
+      await loadTodayGames();
+      setTimeout(() => setRefreshButtonState(true), 5000);
+    }
+
+    document.getElementById('refreshBtn').addEventListener('click', handleRefreshClick);
+
+    // Initial load with delay on button activation
+    window.addEventListener('DOMContentLoaded', async () => {
+      await loadTodayGames();
+      setTimeout(() => setRefreshButtonState(true), 5000);
+    });
   </script>
 </body>
 </html>
