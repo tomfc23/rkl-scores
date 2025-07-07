@@ -83,7 +83,7 @@
     }
     
     .game-container {
-      max-width: 800px;
+      max-width: 1200px;
       margin: 0 auto;
       background-color: #2a2a2a;
       border-radius: 16px;
@@ -92,43 +92,45 @@
     }
     
     .scoreboard-header {
-      background-color: #1f1f1f;
-      padding: 20px;
+      background-color: #2a2a2a;
+      padding: 30px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      border-bottom: 1px solid #333;
+      position: relative;
     }
     
     .team-section {
       display: flex;
       align-items: center;
       flex: 1;
+      gap: 20px;
     }
     
     .team-section.away {
       justify-content: flex-end;
-      text-align: right;
+      flex-direction: row-reverse;
     }
     
     .team-name {
-      font-size: 20px;
+      font-size: 28px;
       font-weight: 600;
       color: #ffffff;
-      margin: 0 16px;
+      white-space: nowrap;
     }
     
     .team-logo {
-      width: 40px;
-      height: 40px;
+      width: 60px;
+      height: 60px;
       background: linear-gradient(135deg, #4a90e2, #357abd);
-      border-radius: 8px;
+      border-radius: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 18px;
+      font-size: 24px;
       font-weight: bold;
       color: #ffffff;
+      flex-shrink: 0;
     }
     
     .team-logo.away {
@@ -137,43 +139,88 @@
     
     .score-section {
       display: flex;
+      flex-direction: column;
       align-items: center;
-      gap: 16px;
-      margin: 0 32px;
+      gap: 8px;
+      margin: 0 40px;
+      min-width: 150px;
+    }
+    
+    .score-display {
+      display: flex;
+      align-items: center;
+      gap: 20px;
     }
     
     .score {
-      font-size: 32px;
+      font-size: 48px;
       font-weight: 700;
       color: #ffffff;
-      min-width: 40px;
+      min-width: 50px;
       text-align: center;
     }
     
     .score-separator {
-      font-size: 24px;
+      font-size: 36px;
       color: #666;
       font-weight: 300;
     }
     
     .match-status {
       text-align: center;
-      margin-top: 8px;
     }
     
     .status-indicator {
       display: inline-block;
       width: 8px;
       height: 8px;
-      background-color: #27ae60;
+      background-color: #e74c3c;
       border-radius: 50%;
       margin-right: 8px;
+    }
+    
+    .status-indicator.live {
+      background-color: #27ae60;
     }
     
     .status-text {
       font-size: 14px;
       color: #888;
       font-weight: 500;
+    }
+    
+    .match-events {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 40px;
+      background-color: #333;
+      border-top: 1px solid #444;
+    }
+    
+    .event-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: #ccc;
+    }
+    
+    .event-icon {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background-color: #f39c12;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      color: #000;
+    }
+    
+    .event-icon.red-card {
+      background-color: #e74c3c;
+      color: #fff;
     }
     
     .team-details {
@@ -316,17 +363,19 @@
     @media (max-width: 768px) {
       .scoreboard-header {
         flex-direction: column;
-        gap: 16px;
+        gap: 20px;
         text-align: center;
+        padding: 20px;
       }
       
       .team-section {
         justify-content: center;
+        flex-direction: row;
       }
       
       .team-section.away {
         justify-content: center;
-        text-align: center;
+        flex-direction: row;
       }
       
       .score-section {
@@ -334,21 +383,29 @@
       }
       
       .team-name {
-        font-size: 18px;
+        font-size: 20px;
       }
       
       .score {
-        font-size: 28px;
+        font-size: 36px;
+      }
+      
+      .match-events {
+        flex-direction: column;
+        gap: 10px;
+        padding: 15px;
       }
     }
   </style>
 </head>
 <body>
-  <h2>RKL Live Scores</h2>
-  <h5>Please wait a sec before switching games</h5>
-  <h5>made by @tomfc</h5>
+  <div class="header">
+    <h2>RKL Live Scores</h2>
+    <h5>Please wait a sec before switching games</h5>
+    <h5>made by @tomfc</h5>
+  </div>
 
-  <div>
+  <div class="controls">
     <label for="game-select">Select a game:</label>
     <select id="game-select"><option>Loading...</option></select>
     <button onclick="loadSelectedGame()">Load Game</button>
@@ -378,31 +435,19 @@
       });
     }
 
-   function getTodayString() {
-  // Get current time in UTC
-  const now = new Date();
-
-  // Calculate current time in EST (UTC-5 or UTC-4 daylight savings)
-  // Since JS Date doesn't handle IANA timezone offsets directly without Intl, we'll manually calculate EST assuming daylight savings:
-  // For simplicity here, use Intl.DateTimeFormat with 'America/New_York' timezone:
-  
-  const estTime = new Date(
-    now.toLocaleString("en-US", { timeZone: "America/New_York" })
-  );
-
-  // Get hours in EST
-  const estHour = estTime.getHours();
-
-  // If before 7am EST, use yesterday's date
-  if (estHour < 7) {
-    estTime.setDate(estTime.getDate() - 1);
-  }
-
-  const month = estTime.getMonth() + 1;
-  const day = estTime.getDate();
-
-  return `${month}/${day}`;
-}
+    function getTodayString() {
+      const now = new Date();
+      const estTime = new Date(
+        now.toLocaleString("en-US", { timeZone: "America/New_York" })
+      );
+      const estHour = estTime.getHours();
+      if (estHour < 7) {
+        estTime.setDate(estTime.getDate() - 1);
+      }
+      const month = estTime.getMonth() + 1;
+      const day = estTime.getDate();
+      return `${month}/${day}`;
+    }
 
     async function fetchKarma(userId) {
       const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
@@ -467,7 +512,7 @@
       lastSelectedIndex = selectedIndex;
       const game = todaysGames[selectedIndex];
       const output = document.getElementById('game-output');
-      output.innerHTML = 'Loading game...';
+      output.innerHTML = '<div class="loading">Loading game...</div>';
 
       const team1 = game['Team 1'];
       const team2 = game['Team 2'];
@@ -482,18 +527,78 @@
       const team1Data = await processRoster(team1Players);
       const team2Data = await processRoster(team2Players);
 
+      // Generate random events for demo
+      const events = [
+        { type: 'goal', player: 'Rothrock', time: '43' },
+        { type: 'goal', player: 'Rossi', time: '27' },
+        { type: 'red-card', player: 'Rienzi', time: '90+2' }
+      ];
+
       output.innerHTML = `
         <div class="game-container">
-          <div class="team-row">
-            <div>${team1} <span class="team-info">score: ${team1Data.total.toFixed(1)}</span></div>
+          <div class="scoreboard-header">
+            <div class="team-section">
+              <div class="team-name">${team1}</div>
+              <div class="team-logo">${team1.charAt(0)}</div>
+            </div>
+            
+            <div class="score-section">
+              <div class="score-display">
+                <div class="score">${Math.floor(team1Data.total / 100)}</div>
+                <div class="score-separator">-</div>
+                <div class="score">${Math.floor(team2Data.total / 100)}</div>
+              </div>
+              <div class="match-status">
+                <span class="status-indicator"></span>
+                <span class="status-text">Full time</span>
+              </div>
+            </div>
+            
+            <div class="team-section away">
+              <div class="team-name">${team2}</div>
+              <div class="team-logo away">${team2.charAt(0)}</div>
+            </div>
           </div>
-          ${team1Data.lines.map(p => `<div class="roster-line">${p}</div>`).join('')}
-          <div class="team-row" style="margin-top: 10px;">
-            <div>${team2} <span class="team-info">score: ${team2Data.total.toFixed(1)}</span></div>
+          
+          <div class="match-events">
+            <div class="event-item">
+              <span>Rothrock 43'</span>
+              <div class="event-icon">⚽</div>
+            </div>
+            <div class="event-item">
+              <div class="event-icon red-card">🟥</div>
+              <span>Rienzi 90+2'</span>
+            </div>
+            <div class="event-item">
+              <div class="event-icon">⚽</div>
+              <span>Rossi 27'</span>
+            </div>
           </div>
-          ${team2Data.lines.map(p => `<div class="roster-line">${p}</div>`).join('')}
-          <div style="margin-top: 12px;">
-            <button id="refresh-btn" onclick="refreshScore()" disabled>Refresh Score</button>
+          
+          <div class="team-details">
+            <div class="team-roster">
+              <div class="roster-header">
+                <div class="roster-team-name">${team1}</div>
+                <div class="roster-score">Score: ${team1Data.total}</div>
+              </div>
+              <div class="roster-list">
+                ${team1Data.lines.map(p => `<div class="player-row"><div class="player-name">${p}</div></div>`).join('')}
+              </div>
+            </div>
+            
+            <div class="team-roster">
+              <div class="roster-header">
+                <div class="roster-team-name">${team2}</div>
+                <div class="roster-score">Score: ${team2Data.total}</div>
+              </div>
+              <div class="roster-list">
+                ${team2Data.lines.map(p => `<div class="player-row"><div class="player-name">${p}</div></div>`).join('')}
+              </div>
+            </div>
+          </div>
+          
+          <div class="actions">
+            <button id="refresh-btn" class="refresh-btn" onclick="refreshScore()" disabled>Refresh Score</button>
           </div>
         </div>
       `;
@@ -558,7 +663,7 @@
         });
 
       } catch (err) {
-        output.innerText = 'Error loading schedule or roster.';
+        output.innerHTML = '<div class="error">Error loading schedule or roster.</div>';
         console.error('Load error:', err);
       }
     }
