@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RKL Live Stats 2</title>
+  <title>RKL Live Stats server</title>
   <style>
     body {
       background-color: #1a1a1a;
@@ -59,6 +59,13 @@
       font-size: 16px;
       color: #888;
     }
+
+    .last-updated {
+      text-align: center;
+      font-size: 12px;
+      margin-top: 10px;
+      color: #aaa;
+    }
   </style>
 </head>
 <body>
@@ -67,51 +74,11 @@
   <div id="stats-container">
     <div class="loading">Loading stats...</div>
   </div>
+  <div class="last-updated" id="last-updated"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <script>
-    const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
-    const karmaCache = new Map();
-
-    function parseCSV(text) {
-      const lines = text.trim().split('\n');
-      const headers = lines[0].split(',').map(h => h.trim());
-      return lines.slice(1).map(line => {
-        const parts = line.split(',').map(p => p.trim());
-        const obj = {};
-        headers.forEach((h, i) => {
-          obj[h] = parts[i];
-        });
-        return obj;
-      });
-    }
-
-    async function fetchWithRetry(url, retries = 3, delayMs = 1000) {
-      for (let i = 0; i < retries; i++) {
-        try {
-          return await axios.get(url);
-        } catch (e) {
-          if (i === retries - 1) throw e;
-          await new Promise(r => setTimeout(r, delayMs));
-        }
-      }
-    }
-
-    async function fetchKarma(userId) {
-      if (karmaCache.has(userId)) return karmaCache.get(userId);
-      const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
-      try {
-        const res = await fetchWithRetry(proxyUrl);
-        const data = JSON.parse(res.data.contents);
-        const delta = data?.stats?.karmaDelta;
-        const val = typeof delta === 'number' ? delta : Number(delta) || 0;
-        karmaCache.set(userId, val);
-        return val;
-      } catch (err) {
-        return 0;
-      }
-    }
+    const backendUrl = '/api/stats'; // Or replace with full URL if hosted separately
 
     function toggleSection(el) {
       el.classList.toggle('visible');
@@ -152,60 +119,39 @@
 
     async function renderStats() {
       const container = document.getElementById('stats-container');
+      const updatedElem = document.getElementById('last-updated');
+      container.innerHTML = '<div class="loading">Loading stats...</div>';
       try {
-        const response = await axios.get(rosterCsvUrl);
-        const players = parseCSV(response.data).filter(p => p['playing?']?.toLowerCase() === 'yes');
+        const response = await axios.get(backendUrl);
+        const { updated, stats } = response.data;
 
-        const teamScores = {};
-        const userScores = [];
-
-        for (const p of players) {
-          const userId = p['User ID'];
-          const userAt = p['User @'] || 'unknown';
-          const role = (p['role'] || '').toLowerCase();
-          const isCaptain = role === 'captain';
-          const team = p.Team;
-          const deduction = parseFloat(p.deductions || 0);
-          const karma = await fetchKarma(userId);
-          const adjusted = karma - deduction;
-          const boosted = isCaptain ? adjusted * 1.5 : adjusted;
-
-          userScores.push({ name: `${userAt}${isCaptain ? ' (c)' : ''}`, score: boosted });
-
-          if (!teamScores[team]) teamScores[team] = 0;
-          teamScores[team] += boosted;
-        }
-
-        const teamList = Object.entries(teamScores).map(([team, score]) => ({ team, score }));
-        const sortedTeams = teamList.sort((a, b) => b.score - a.score);
-        const sortedUsers = userScores.sort((a, b) => b.score - a.score);
-
-        const median = sortedTeams.length % 2 === 1
-          ? Math.round(sortedTeams[Math.floor(sortedTeams.length / 2)].score)
-          : Math.round((sortedTeams[sortedTeams.length / 2 - 1].score + sortedTeams[sortedTeams.length / 2].score) / 2);
+        const { topTeams, bottomTeams, median, topUsers, bottomUsers } = stats;
 
         container.innerHTML = '';
-        container.appendChild(createStatSection("Top 3 Teams", sortedTeams.slice(0, 3).map(t => `${t.team}: ${Math.round(t.score)}`)));
-        container.appendChild(createStatSection("Bottom 3 Teams", sortedTeams.slice(-3).map(t => `${t.team}: ${Math.round(t.score)}`)));
+        container.appendChild(createStatSection("Top 3 Teams", topTeams.map(t => `${t.team}: ${Math.round(t.score)}`)));
+        container.appendChild(createStatSection("Bottom 3 Teams", bottomTeams.map(t => `${t.team}: ${Math.round(t.score)}`)));
         container.appendChild(createStatSection("League Median Score", [`${median}`]));
-        container.appendChild(createStatSection("Top 5 Users", sortedUsers.slice(0, 5).map(u => `${u.name}: ${Math.round(u.score)}`)));
-        container.appendChild(createStatSection("Bottom 5 Users", sortedUsers.slice(-5).map(u => `${u.name}: ${Math.round(u.score)}`)));
+        container.appendChild(createStatSection("Top 5 Users", topUsers.map(u => `${u.name}: ${Math.round(u.score)}`)));
+        container.appendChild(createStatSection("Bottom 5 Users", bottomUsers.map(u => `${u.name}: ${Math.round(u.score)}`)));
+
+        const time = new Date(updated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        updatedElem.textContent = `Last updated at ${time}`;
       } catch (err) {
         console.error(err);
-        container.innerHTML = '<div class="error">Failed to load stats.</div>';
+        container.innerHTML = '<div class="error">Failed to load stats from backend.</div>';
+        updatedElem.textContent = '';
       }
     }
 
-    // First load
+    // Initial load
     renderStats();
 
-    // After 1-minute delay, auto-refresh every 10 minutes
+    // Auto-refresh every 10 minutes (after a 1-minute delay)
     setTimeout(() => {
       setInterval(() => {
-        karmaCache.clear();
         renderStats();
-      }, 10 * 60 * 1000); // 10 minutes
-    }, 60 * 1000); // 1-minute initial delay
+      }, 10 * 60 * 1000);
+    }, 60 * 1000);
   </script>
 </body>
 </html>
