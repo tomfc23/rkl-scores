@@ -95,7 +95,7 @@
           continue;
         }
 
-        await delay(300); // prevent API overload
+        await delay(500); // prevent API overload
 
         const karma = await fetchKarma(userId);
         if (karma === null) {
