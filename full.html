@@ -677,27 +677,14 @@
       const outputDiv = document.getElementById('game-output');
       outputDiv.innerHTML = `
       <div class="game-container">
-        <div class="scoreboard-header">
-          <div class="team-section away">
-            <div class="team-logo away">${team1[0]}</div>
-            <div class="team-name-large">${team1}</div>
-          </div>
-          <div class="score-section">
-            <div class="score-display">
-              <div class="score">${team1Processed.total}</div>
-              <div class="score-separator">-</div>
-              <div class="score">${team2Processed.total}</div>
-            </div>
-            <div class="match-status">
-              <span class="status-indicator live"></span>
-              <span class="status-text">Live Match</span>
-            </div>
-          </div>
-          <div class="team-section home">
-            <div class="team-name-large">${team2}</div>
-            <div class="team-logo">${team2[0]}</div>
-          </div>
-        </div>
+        <div class="scoreboard-header" style="display: flex; justify-content: center; align-items: center; gap: 12px; font-size: 24px; font-weight: 700; color: #ffffff; flex-wrap: wrap;">
+  <div class="team-name-large" style="white-space: nowrap;">${team1}</div>
+  <div style="color: #4a90e2;">${team1Processed.total}</div>
+  <div style="color: #888; user-select: none;">-</div>
+  <div style="color: #4a90e2;">${team2Processed.total}</div>
+  <div class="team-name-large" style="white-space: nowrap;">${team2}</div>
+</div>
+
 
         <div class="match-events">
           <div class="event-item"><div class="event-icon">⚽</div> Goals: 2 - 1</div>
