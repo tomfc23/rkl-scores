@@ -31,17 +31,21 @@
       font-weight: normal;
       font-size: 0.9em;
     }
+    .roster-line {
+      font-size: 0.9em;
+      margin-left: 15px;
+    }
   </style>
 </head>
 <body>
-  <h2>Karma League - Today's Games</h2>
-
+  <h2>Karma League - Today's games with rosters</h2>
   <div id="games-schedule">Loading games...</div>
 
   <script>
     const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
+    const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
 
-    // Utility: parse CSV text into an array of objects
+    // Parse CSV to array of objects
     function parseCSV(text) {
       const lines = text.trim().split('\n');
       const headers = lines[0].split(',').map(h => h.trim());
@@ -55,11 +59,25 @@
       });
     }
 
+    // Format today's date like 7/6
     function getTodayString() {
       const today = new Date();
       const month = today.getMonth() + 1;
       const day = today.getDate();
-      return `${month}/${day}`; // Format like 7/6
+      return `${month}/${day}`;
+    }
+
+    async function fetchKarma(userId) {
+      const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
+      try {
+        const response = await axios.get(proxyUrl);
+        const data = JSON.parse(response.data.contents);
+        return Number(data.stats.karmaDelta || 0);
+      } catch (e) {
+        console.error(`Error fetching karma for ${userId}:`, e);
+        return null;
+      }
     }
 
     async function loadTodayGames() {
@@ -67,12 +85,16 @@
       container.innerText = 'Loading schedule...';
 
       try {
-        const response = await axios.get(scheduleCsvUrl);
-        const games = parseCSV(response.data);
+        // Fetch both CSVs
+        const [scheduleResp, rosterResp] = await Promise.all([
+          axios.get(scheduleCsvUrl),
+          axios.get(rosterCsvUrl)
+        ]);
+        const games = parseCSV(scheduleResp.data);
+        const players = parseCSV(rosterResp.data);
 
         const today = getTodayString();
         const todaysGames = games.filter(g => g['Date'] === today);
-
         if (todaysGames.length === 0) {
           container.innerText = 'No games scheduled for today.';
           return;
@@ -80,24 +102,52 @@
 
         container.innerHTML = '';
 
-        todaysGames.forEach(game => {
+        for (const game of todaysGames) {
+          const team1 = game['Team 1'];
+          const team2 = game['Team 2'];
+
+          const team1Players = players.filter(p => p.Team === team1 && p['playing?'].toLowerCase() === 'yes');
+          const team2Players = players.filter(p => p.Team === team2 && p['playing?'].toLowerCase() === 'yes');
+
+          const [team1Roster, team2Roster] = await Promise.all([
+            Promise.all(team1Players.map(async p => {
+              const karma = await fetchKarma(p['User ID']);
+              if (karma === null) return `${p['User @']}: error`;
+              const deduction = parseFloat(p['deductions'] || 0);
+              const adjusted = karma - deduction;
+              const role = (p['role'] || '').trim().toLowerCase();
+              const label = `${p['User @']}${role === 'captain' ? ' (c)' : ''}`;
+              return `${label}: ${adjusted}`;
+            })),
+            Promise.all(team2Players.map(async p => {
+              const karma = await fetchKarma(p['User ID']);
+              if (karma === null) return `${p['User @']}: error`;
+              const deduction = parseFloat(p['deductions'] || 0);
+              const adjusted = karma - deduction;
+              const role = (p['role'] || '').trim().toLowerCase();
+              const label = `${p['User @']}${role === 'captain' ? ' (c)' : ''}`;
+              return `${label}: ${adjusted}`;
+            }))
+          ]);
+
+          // Render game block
           const gameDiv = document.createElement('div');
           gameDiv.className = 'game-container';
           gameDiv.innerHTML = `
             <div class="team-row">
-              <div>${game['Team 1']} <span class="team-info">score will show here</span></div>
+              <div>${team1} <span class="team-info">score will show here</span></div>
             </div>
-            <div class="team-info">roster will show here</div>
+            ${team1Roster.map(p => `<div class="roster-line">${p}</div>`).join('')}
             <div class="team-row" style="margin-top: 10px;">
-              <div>${game['Team 2']} <span class="team-info">score will show here</span></div>
+              <div>${team2} <span class="team-info">score will show here</span></div>
             </div>
-            <div class="team-info">roster will show here</div>
+            ${team2Roster.map(p => `<div class="roster-line">${p}</div>`).join('')}
           `;
           container.appendChild(gameDiv);
-        });
+        }
 
       } catch (err) {
-        container.innerText = 'Error loading schedule.';
+        container.innerText = 'Error loading schedule or roster.';
         console.error(err);
       }
     }
