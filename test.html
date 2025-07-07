@@ -6,47 +6,396 @@
   <title>RKL Live Scores</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
-    body {
-      background-color: #1a1a1a;
-      color: white;
-      font-family: sans-serif;
+    * {
       margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: #1a1a1a;
+      color: #ffffff;
+      min-height: 100vh;
       padding: 20px;
     }
-    h2, h5 { text-align: center; }
-    select, button {
+    
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    
+    .header h2 {
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #ffffff;
+    }
+    
+    .header h5 {
+      font-size: 14px;
+      font-weight: 400;
+      color: #888;
+    }
+    
+    .controls {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+    }
+    
+    .controls label {
+      color: #ccc;
+      font-size: 14px;
+    }
+    
+    .controls select {
+      background-color: #2a2a2a;
+      color: #ffffff;
+      border: 1px solid #444;
+      border-radius: 8px;
       padding: 8px 12px;
       font-size: 14px;
-      border-radius: 6px;
-      border: none;
-      margin: 5px;
+      min-width: 200px;
     }
-    button {
+    
+    .controls button {
       background-color: #007acc;
-      color: white;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 14px;
       cursor: pointer;
+      transition: background-color 0.2s;
     }
-    button:disabled {
-      background-color: #555;
+    
+    .controls button:hover:not(:disabled) {
+      background-color: #0066b3;
+    }
+    
+    .controls button:disabled {
+      background-color: #444;
       cursor: not-allowed;
     }
-    .score {
-      font-size: 32px;
+    
+    .game-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background-color: #2a2a2a;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    
+    .scoreboard-header {
+      background-color: #2a2a2a;
+      padding: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+    }
+    
+    .team-section {
+      display: flex;
+      align-items: center;
+      flex: 1;
+      gap: 20px;
+    }
+    
+    .team-section.away {
+      justify-content: flex-end;
+    }
+    
+    .team-name {
+      font-size: 28px;
+      font-weight: 600;
+      color: #ffffff;
+      white-space: nowrap;
+    }
+    
+    .team-logo {
+      width: 60px;
+      height: 60px;
+      background: linear-gradient(135deg, #4a90e2, #357abd);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
       font-weight: bold;
-      margin: 10px 0;
+      color: #ffffff;
+      flex-shrink: 0;
     }
-    .team {
-      margin-top: 20px;
+    
+    .team-logo.away {
+      background: linear-gradient(135deg, #e74c3c, #c0392b);
     }
-    .player {
-      padding: 6px 10px;
-      background: #2a2a2a;
-      margin: 3px 0;
-      border-radius: 6px;
+    
+    .score-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      margin: 0 40px;
+      min-width: 150px;
     }
-    .negative { color: #e74c3c; }
-    .positive { color: #27ae60; }
-    .error-text { color: #e74c3c; }
+    
+    .score-display {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    
+    .score {
+      font-size: 48px;
+      font-weight: 700;
+      color: #ffffff;
+      min-width: 50px;
+      text-align: center;
+    }
+    
+    .score-separator {
+      font-size: 36px;
+      color: #666;
+      font-weight: 300;
+    }
+    
+    .match-status {
+      text-align: center;
+    }
+    
+    .status-indicator {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background-color: #e74c3c;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+    
+    .status-indicator.live {
+      background-color: #27ae60;
+    }
+    
+    .status-text {
+      font-size: 14px;
+      color: #888;
+      font-weight: 500;
+    }
+    
+    .match-events {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 40px;
+      background-color: #333;
+      border-top: 1px solid #444;
+    }
+    
+    .event-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: #ccc;
+    }
+    
+    .event-icon {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background-color: #f39c12;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      color: #000;
+    }
+    
+    .event-icon.red-card {
+      background-color: #e74c3c;
+      color: #fff;
+    }
+    
+    .team-details {
+      padding: 24px;
+    }
+    
+    .team-roster {
+      margin-bottom: 32px;
+    }
+    
+    .team-roster:last-child {
+      margin-bottom: 0;
+    }
+    
+    .roster-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid #333;
+    }
+    
+    .roster-team-name {
+      font-size: 18px;
+      font-weight: 600;
+      color: #ffffff;
+    }
+    
+    .roster-score {
+      font-size: 18px;
+      font-weight: 700;
+      color: #4a90e2;
+    }
+    
+    .roster-list {
+      display: grid;
+      gap: 8px;
+    }
+    
+    .player-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background-color: #333;
+      border-radius: 8px;
+      transition: background-color 0.2s;
+    }
+    
+    .player-row:hover {
+      background-color: #3a3a3a;
+    }
+    
+    .player-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .captain-badge {
+      background-color: #f39c12;
+      color: #000;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+    
+    .player-score {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    
+    .positive-score {
+      color: #27ae60;
+    }
+    
+    .negative-score {
+      color: #e74c3c;
+    }
+    
+    .neutral-score {
+      color: #95a5a6;
+    }
+    
+    .captain-boost {
+      color: #f39c12;
+      font-size: 12px;
+      margin-left: 4px;
+    }
+    
+    .actions {
+      text-align: center;
+      padding: 20px;
+      border-top: 1px solid #333;
+    }
+    
+    .refresh-btn {
+      background-color: #27ae60;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 24px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .refresh-btn:hover:not(:disabled) {
+      background-color: #219a52;
+      transform: translateY(-1px);
+    }
+    
+    .refresh-btn:disabled {
+      background-color: #444;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #888;
+      font-size: 16px;
+    }
+    
+    .error {
+      text-align: center;
+      padding: 40px;
+      color: #e74c3c;
+      font-size: 16px;
+    }
+    
+    @media (max-width: 768px) {
+      .scoreboard-header {
+        flex-direction: column;
+        gap: 20px;
+        text-align: center;
+        padding: 20px;
+      }
+      
+      .team-section {
+        justify-content: center;
+        flex-direction: row;
+      }
+      
+      .team-section.away {
+        justify-content: center;
+        flex-direction: row;
+      }
+      
+      .score-section {
+        margin: 0;
+      }
+      
+      .team-name {
+        font-size: 20px;
+      }
+      
+      .score {
+        font-size: 36px;
+      }
+      
+      .match-events {
+        flex-direction: column;
+        gap: 10px;
+        padding: 15px;
+      }
+    }
+  </style>
   </style>
 </head>
 <body>
