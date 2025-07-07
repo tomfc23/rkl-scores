@@ -34,7 +34,7 @@
   </style>
 </head>
 <body>
-  <h2>Karma League - Today's Games - updated?</h2>
+  <h2>Karma League - Today's Games - delay</h2>
   <div id="games-schedule">Loading games...</div>
 
   <script>
@@ -61,6 +61,10 @@
       return `${month}/${day}`;
     }
 
+    function delay(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
     async function fetchKarma(userId) {
       const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
       const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
@@ -72,6 +76,35 @@
         console.error(`Error fetching karma for ${userId}:`, e);
         return null;
       }
+    }
+
+    async function processRoster(players) {
+      const results = [];
+
+      for (const p of players) {
+        const userId = p['User ID']?.trim();
+        const userAt = p['User @']?.trim() || 'Unknown';
+        if (!userId || userId.toLowerCase() === 'not found') {
+          results.push(`${userAt}: missing user ID`);
+          continue;
+        }
+
+        await delay(300); // add delay between API calls
+
+        const karma = await fetchKarma(userId);
+        if (karma === null) {
+          results.push(`${userAt}: error`);
+          continue;
+        }
+
+        const deduction = parseFloat(p['deductions'] || 0);
+        const adjusted = karma - deduction;
+        const role = (p['role'] || '').trim().toLowerCase();
+        const label = `${userAt}${role === 'captain' ? ' (c)' : ''}`;
+        results.push(`${label}: ${adjusted}`);
+      }
+
+      return results;
     }
 
     async function loadTodayGames() {
@@ -106,39 +139,8 @@
             p.Team === team2 && p['playing?'].toLowerCase() === 'yes'
           );
 
-          const [team1Roster, team2Roster] = await Promise.all([
-            Promise.all(team1Players.map(async p => {
-              const userId = p['User ID']?.trim();
-              if (!userId || userId.toLowerCase() === 'not found') {
-                return `${p['User @']}: missing user ID`;
-              }
-
-              const karma = await fetchKarma(userId);
-              if (karma === null) return `${p['User @']}: error`;
-
-              const deduction = parseFloat(p['deductions'] || 0);
-              const adjusted = karma - deduction;
-              const role = (p['role'] || '').trim().toLowerCase();
-              const label = `${p['User @']}${role === 'captain' ? ' (c)' : ''}`;
-              return `${label}: ${adjusted}`;
-            })),
-
-            Promise.all(team2Players.map(async p => {
-              const userId = p['User ID']?.trim();
-              if (!userId || userId.toLowerCase() === 'not found') {
-                return `${p['User @']}: missing user ID`;
-              }
-
-              const karma = await fetchKarma(userId);
-              if (karma === null) return `${p['User @']}: error`;
-
-              const deduction = parseFloat(p['deductions'] || 0);
-              const adjusted = karma - deduction;
-              const role = (p['role'] || '').trim().toLowerCase();
-              const label = `${p['User @']}${role === 'captain' ? ' (c)' : ''}`;
-              return `${label}: ${adjusted}`;
-            }))
-          ]);
+          const team1Roster = await processRoster(team1Players);
+          const team2Roster = await processRoster(team2Players);
 
           const gameDiv = document.createElement('div');
           gameDiv.className = 'game-container';
