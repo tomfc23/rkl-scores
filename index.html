@@ -6,37 +6,340 @@
   <title>Karma League Scores</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
     body {
-      font-family: Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: #1a1a1a;
+      color: #ffffff;
+      min-height: 100vh;
       padding: 20px;
     }
-    .game-container {
-      border: 1px solid #ccc;
-      padding: 12px;
-      margin-top: 16px;
-      border-radius: 8px;
+    
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
     }
-    .team-row {
+    
+    .header h2 {
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #ffffff;
+    }
+    
+    .header h5 {
+      font-size: 14px;
+      font-weight: 400;
+      color: #888;
+    }
+    
+    .controls {
       display: flex;
-      justify-content: space-between;
-      font-weight: bold;
-      margin-top: 6px;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
     }
-    .team-info {
-      margin-left: 10px;
-      font-weight: normal;
-      font-size: 0.9em;
+    
+    .controls label {
+      color: #ccc;
+      font-size: 14px;
     }
-    .roster-line {
-      font-size: 0.9em;
-      margin-left: 15px;
+    
+    .controls select {
+      background-color: #2a2a2a;
+      color: #ffffff;
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 14px;
+      min-width: 200px;
     }
-    .negative {
-      color: red;
+    
+    .controls button {
+      background-color: #007acc;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background-color 0.2s;
     }
-    button:disabled {
-      opacity: 0.5;
+    
+    .controls button:hover:not(:disabled) {
+      background-color: #0066b3;
+    }
+    
+    .controls button:disabled {
+      background-color: #444;
       cursor: not-allowed;
+    }
+    
+    .game-container {
+      max-width: 800px;
+      margin: 0 auto;
+      background-color: #2a2a2a;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    
+    .scoreboard-header {
+      background-color: #1f1f1f;
+      padding: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #333;
+    }
+    
+    .team-section {
+      display: flex;
+      align-items: center;
+      flex: 1;
+    }
+    
+    .team-section.away {
+      justify-content: flex-end;
+      text-align: right;
+    }
+    
+    .team-name {
+      font-size: 20px;
+      font-weight: 600;
+      color: #ffffff;
+      margin: 0 16px;
+    }
+    
+    .team-logo {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, #4a90e2, #357abd);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: bold;
+      color: #ffffff;
+    }
+    
+    .team-logo.away {
+      background: linear-gradient(135deg, #e74c3c, #c0392b);
+    }
+    
+    .score-section {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin: 0 32px;
+    }
+    
+    .score {
+      font-size: 32px;
+      font-weight: 700;
+      color: #ffffff;
+      min-width: 40px;
+      text-align: center;
+    }
+    
+    .score-separator {
+      font-size: 24px;
+      color: #666;
+      font-weight: 300;
+    }
+    
+    .match-status {
+      text-align: center;
+      margin-top: 8px;
+    }
+    
+    .status-indicator {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background-color: #27ae60;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+    
+    .status-text {
+      font-size: 14px;
+      color: #888;
+      font-weight: 500;
+    }
+    
+    .team-details {
+      padding: 24px;
+    }
+    
+    .team-roster {
+      margin-bottom: 32px;
+    }
+    
+    .team-roster:last-child {
+      margin-bottom: 0;
+    }
+    
+    .roster-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid #333;
+    }
+    
+    .roster-team-name {
+      font-size: 18px;
+      font-weight: 600;
+      color: #ffffff;
+    }
+    
+    .roster-score {
+      font-size: 18px;
+      font-weight: 700;
+      color: #4a90e2;
+    }
+    
+    .roster-list {
+      display: grid;
+      gap: 8px;
+    }
+    
+    .player-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background-color: #333;
+      border-radius: 8px;
+      transition: background-color 0.2s;
+    }
+    
+    .player-row:hover {
+      background-color: #3a3a3a;
+    }
+    
+    .player-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .captain-badge {
+      background-color: #f39c12;
+      color: #000;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+    
+    .player-score {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    
+    .positive-score {
+      color: #27ae60;
+    }
+    
+    .negative-score {
+      color: #e74c3c;
+    }
+    
+    .neutral-score {
+      color: #95a5a6;
+    }
+    
+    .captain-boost {
+      color: #f39c12;
+      font-size: 12px;
+      margin-left: 4px;
+    }
+    
+    .actions {
+      text-align: center;
+      padding: 20px;
+      border-top: 1px solid #333;
+    }
+    
+    .refresh-btn {
+      background-color: #27ae60;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 24px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .refresh-btn:hover:not(:disabled) {
+      background-color: #219a52;
+      transform: translateY(-1px);
+    }
+    
+    .refresh-btn:disabled {
+      background-color: #444;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #888;
+      font-size: 16px;
+    }
+    
+    .error {
+      text-align: center;
+      padding: 40px;
+      color: #e74c3c;
+      font-size: 16px;
+    }
+    
+    @media (max-width: 768px) {
+      .scoreboard-header {
+        flex-direction: column;
+        gap: 16px;
+        text-align: center;
+      }
+      
+      .team-section {
+        justify-content: center;
+      }
+      
+      .team-section.away {
+        justify-content: center;
+        text-align: center;
+      }
+      
+      .score-section {
+        margin: 0;
+      }
+      
+      .team-name {
+        font-size: 18px;
+      }
+      
+      .score {
+        font-size: 28px;
+      }
     }
   </style>
 </head>
@@ -74,12 +377,31 @@
       });
     }
 
-    function getTodayString() {
-      const today = new Date();
-      const month = today.getMonth() + 1;
-      const day = today.getDate();
-      return `${month}/${day}`;
-    }
+   function getTodayString() {
+  // Get current time in UTC
+  const now = new Date();
+
+  // Calculate current time in EST (UTC-5 or UTC-4 daylight savings)
+  // Since JS Date doesn't handle IANA timezone offsets directly without Intl, we'll manually calculate EST assuming daylight savings:
+  // For simplicity here, use Intl.DateTimeFormat with 'America/New_York' timezone:
+  
+  const estTime = new Date(
+    now.toLocaleString("en-US", { timeZone: "America/New_York" })
+  );
+
+  // Get hours in EST
+  const estHour = estTime.getHours();
+
+  // If before 7am EST, use yesterday's date
+  if (estHour < 7) {
+    estTime.setDate(estTime.getDate() - 1);
+  }
+
+  const month = estTime.getMonth() + 1;
+  const day = estTime.getDate();
+
+  return `${month}/${day}`;
+}
 
     async function fetchKarma(userId) {
       const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
