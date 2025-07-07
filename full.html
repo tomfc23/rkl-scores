@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Karma League Scores Combined 1.0</title>
+  <title>Karma League Scores Combined 1.1</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
     * {
@@ -136,22 +136,15 @@
     
     .scoreboard-header {
       background-color: #2a2a2a;
-      padding: 30px;
+      padding: 40px 30px;
       display: flex;
+      justify-content: center;
       align-items: center;
-      justify-content: space-between;
-      position: relative;
-    }
-    
-    .team-section {
-      display: flex;
-      align-items: center;
-      flex: 1;
       gap: 20px;
-    }
-    
-    .team-section.away {
-      justify-content: flex-end;
+      font-size: 28px;
+      font-weight: 700;
+      color: #ffffff;
+      flex-wrap: wrap;
     }
     
     .team-name-large {
@@ -161,108 +154,16 @@
       white-space: nowrap;
     }
     
-    .team-logo {
-      width: 60px;
-      height: 60px;
-      background: linear-gradient(135deg, #4a90e2, #357abd);
-      border-radius: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 24px;
-      font-weight: bold;
-      color: #ffffff;
-      flex-shrink: 0;
-    }
-    
-    .team-logo.away {
-      background: linear-gradient(135deg, #e74c3c, #c0392b);
-    }
-    
-    .score-section {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 8px;
-      margin: 0 40px;
-      min-width: 150px;
-    }
-    
     .score-display {
-      display: flex;
-      align-items: center;
-      gap: 20px;
-    }
-    
-    .score {
-      font-size: 48px;
+      font-size: 36px;
       font-weight: 700;
-      color: #ffffff;
-      min-width: 50px;
-      text-align: center;
+      color: #4a90e2;
     }
     
     .score-separator {
-      font-size: 36px;
+      font-size: 28px;
       color: #666;
       font-weight: 300;
-    }
-    
-    .match-status {
-      text-align: center;
-    }
-    
-    .status-indicator {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      background-color: #e74c3c;
-      border-radius: 50%;
-      margin-right: 8px;
-    }
-    
-    .status-indicator.live {
-      background-color: #27ae60;
-    }
-    
-    .status-text {
-      font-size: 14px;
-      color: #888;
-      font-weight: 500;
-    }
-    
-    .match-events {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 20px 40px;
-      background-color: #333;
-      border-top: 1px solid #444;
-    }
-    
-    .event-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 14px;
-      color: #ccc;
-    }
-    
-    .event-icon {
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      background-color: #f39c12;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 10px;
-      color: #000;
-    }
-    
-    .event-icon.red-card {
-      background-color: #e74c3c;
-      color: #fff;
     }
     
     .team-details {
@@ -405,37 +306,21 @@
     @media (max-width: 768px) {
       .scoreboard-header {
         flex-direction: column;
-        gap: 20px;
+        gap: 15px;
         text-align: center;
-        padding: 20px;
-      }
-      
-      .team-section {
-        justify-content: center;
-        flex-direction: row;
-      }
-      
-      .team-section.away {
-        justify-content: center;
-        flex-direction: row;
-      }
-      
-      .score-section {
-        margin: 0;
+        padding: 30px 20px;
       }
       
       .team-name-large {
-        font-size: 20px;
+        font-size: 24px;
       }
       
-      .score {
-        font-size: 36px;
+      .score-display {
+        font-size: 32px;
       }
       
-      .match-events {
-        flex-direction: column;
-        gap: 10px;
-        padding: 15px;
+      .score-separator {
+        font-size: 24px;
       }
     }
   </style>
@@ -677,18 +562,12 @@
       const outputDiv = document.getElementById('game-output');
       outputDiv.innerHTML = `
       <div class="game-container">
-        <div class="scoreboard-header" style="display: flex; justify-content: center; align-items: center; gap: 12px; font-size: 24px; font-weight: 700; color: #ffffff; flex-wrap: wrap;">
-  <div class="team-name-large" style="white-space: nowrap;">${team1}</div>
-  <div style="color: #4a90e2;">${team1Processed.total}</div>
-  <div style="color: #888; user-select: none;">-</div>
-  <div style="color: #4a90e2;">${team2Processed.total}</div>
-  <div class="team-name-large" style="white-space: nowrap;">${team2}</div>
-</div>
-
-
-        <div class="match-events">
-          <div class="event-item"><div class="event-icon">⚽</div> Goals: 2 - 1</div>
-          <div class="event-item"><div class="event-icon red-card">🟥</div> Red Cards: 1 - 0</div>
+        <div class="scoreboard-header">
+          <div class="team-name-large">${team1}</div>
+          <div class="score-display">${team1Processed.total}</div>
+          <div class="score-separator">-</div>
+          <div class="score-display">${team2Processed.total}</div>
+          <div class="team-name-large">${team2}</div>
         </div>
 
         <div class="team-details">
