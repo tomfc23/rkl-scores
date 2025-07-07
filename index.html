@@ -34,7 +34,7 @@
   </style>
 </head>
 <body>
-  <h2>Karma League - Today's Games - delay</h2>
+  <h2>Karma League - Today's Games - debug</h2>
   <div id="games-schedule">Loading games...</div>
 
   <script>
@@ -68,12 +68,20 @@
     async function fetchKarma(userId) {
       const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
       const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
+
       try {
+        console.log(`📡 Fetching karma for userId: "${userId}"`);
         const response = await axios.get(proxyUrl);
         const data = JSON.parse(response.data.contents);
-        return Number(data.stats.karmaDelta || 0);
+
+        if (!data.stats || typeof data.stats.karmaDelta === 'undefined') {
+          console.warn(`⚠️ No karmaDelta for userId ${userId}`, data);
+          return null;
+        }
+
+        return Number(data.stats.karmaDelta);
       } catch (e) {
-        console.error(`Error fetching karma for ${userId}:`, e);
+        console.error(`❌ Fetch failed for userId ${userId}:`, e.message);
         return null;
       }
     }
@@ -82,14 +90,16 @@
       const results = [];
 
       for (const p of players) {
-        const userId = p['User ID']?.trim();
         const userAt = p['User @']?.trim() || 'Unknown';
-        if (!userId || userId.toLowerCase() === 'not found') {
-          results.push(`${userAt}: missing user ID`);
+        let userId = p['User ID']?.trim();
+
+        if (!userId || userId.toLowerCase() === 'not found' || isNaN(userId)) {
+          results.push(`${userAt}: invalid or missing user ID`);
+          console.warn(`❌ Skipping invalid userId for @${userAt}:`, userId);
           continue;
         }
 
-        await delay(300); // add delay between API calls
+        await delay(300); // rate limit protection
 
         const karma = await fetchKarma(userId);
         if (karma === null) {
@@ -121,6 +131,7 @@
 
         const today = getTodayString();
         const todaysGames = games.filter(g => g['Date'] === today);
+
         if (todaysGames.length === 0) {
           container.innerText = 'No games scheduled for today.';
           return;
@@ -159,7 +170,7 @@
 
       } catch (err) {
         container.innerText = 'Error loading schedule or roster.';
-        console.error(err);
+        console.error('❌ Error in loadTodayGames:', err);
       }
     }
 
