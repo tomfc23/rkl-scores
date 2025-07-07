@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Karma League Scores 2.0</title>
+  <title>Karma League Scores 1.0</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
     body {
@@ -83,45 +83,28 @@
       return `${est.getMonth() + 1}/${est.getDate()}`;
     }
 
-    async function delay(ms) {
-      return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
     async function fetchKarma(userId) {
       if (karmaCache.has(userId)) return karmaCache.get(userId);
 
       const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
-      const proxyUrl = `https://corsproxy.io/?${apiUrl}`;
-
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
       try {
         const response = await axios.get(proxyUrl);
-        const data = JSON.parse(response.data);
+        const data = JSON.parse(response.data.contents);
         const delta = data?.stats?.karmaDelta;
         const value = typeof delta === 'number' ? delta : Number(delta) || 0;
         karmaCache.set(userId, value);
         failedUserIds.delete(userId);
         return value;
-      } catch (e1) {
-        // Retry once
-        try {
-          const response2 = await axios.get(proxyUrl);
-          const data2 = JSON.parse(response2.data);
-          const delta2 = data2?.stats?.karmaDelta;
-          const value2 = typeof delta2 === 'number' ? delta2 : Number(delta2) || 0;
-          karmaCache.set(userId, value2);
-          failedUserIds.delete(userId);
-          return value2;
-        } catch (e2) {
-          console.error(`Final error fetching karma for ${userId}:`, e2);
-          failedUserIds.add(userId);
-          return null;
-        }
+      } catch (e) {
+        console.error(`Error fetching karma for ${userId}:`, e);
+        failedUserIds.add(userId);
+        return null;
       }
     }
 
     async function processRoster(players) {
       const results = [];
-
       for (const p of players) {
         const userId = p['User ID']?.trim();
         const userAt = p['User @']?.trim() || 'Unknown';
@@ -132,8 +115,6 @@
         }
 
         const karma = await fetchKarma(userId);
-        await delay(150); // stagger fetches to prevent overload
-
         if (karma === null) {
           results.push(`${userAt}: error fetching`);
           continue;
@@ -146,7 +127,6 @@
         const formatted = `<span class="${adjusted < 0 ? 'negative' : ''}">${adjusted}</span>`;
         results.push(`${label}: ${formatted}`);
       }
-
       return results;
     }
 
@@ -186,48 +166,46 @@
 
           const gameDiv = document.createElement('div');
           gameDiv.className = 'game-container';
+          gameDiv.dataset.team1 = team1;
+          gameDiv.dataset.team2 = team2;
 
           gameDiv.innerHTML = `
             <div class="team-row">
               <div>${team1} <span class="team-info">score will show here</span></div>
             </div>
-            ${team1Roster.map(p => `<div class="roster-line">${p}</div>`).join('')}
+            ${team1Roster.map(p => `<div class="roster-line" data-user="${p}">${p}</div>`).join('')}
             <div class="team-row" style="margin-top: 10px;">
               <div>${team2} <span class="team-info">score will show here</span></div>
             </div>
-            ${team2Roster.map(p => `<div class="roster-line">${p}</div>`).join('')}
+            ${team2Roster.map(p => `<div class="roster-line" data-user="${p}">${p}</div>`).join('')}
           `;
           container.appendChild(gameDiv);
         }
-
       } catch (err) {
         container.innerText = 'Error loading schedule or roster.';
-        console.error('Schedule/roster load error:', err);
+        console.error('Load error:', err);
       }
     }
 
     async function refreshFailedOnly() {
       const container = document.getElementById('games-schedule');
-      const lines = container.querySelectorAll('.roster-line');
+      const rosterLines = container.querySelectorAll('.roster-line');
 
-      for (const line of lines) {
-        const lineText = line.textContent;
-        const userAtMatch = lineText.match(/@[\w.-]+/);
-        if (!userAtMatch) continue;
+      for (const line of rosterLines) {
+        const userText = line.textContent;
+        const match = userText.match(/@([\w.-]+)/);
+        const userAt = match ? match[1] : null;
 
-        const userAt = userAtMatch[0];
-        const userId = [...karmaCache.keys()].find(id => lineText.includes(id));
+        const userIdMatch = Object.entries(karmaCache).find(([id, value]) => value === null);
+        if (!userIdMatch) continue;
 
-        if (!userId || !failedUserIds.has(userId)) continue;
+        const userId = userIdMatch[0];
+        if (!failedUserIds.has(userId)) continue;
 
-        const karma = await fetchKarma(userId);
-        await delay(150);
-
-        if (karma !== null) {
-          const deduction = 0; // You could cache and reuse this value
-          const adjusted = karma - deduction;
-          const formatted = `<span class="${adjusted < 0 ? 'negative' : ''}">${adjusted}</span>`;
-          line.innerHTML = `${userAt}: ${formatted}`;
+        const newKarma = await fetchKarma(userId);
+        if (newKarma !== null) {
+          const formatted = `<span class="${newKarma < 0 ? 'negative' : ''}">${newKarma}</span>`;
+          line.innerHTML = `${userText.split(':')[0]}: ${formatted}`;
         }
       }
     }
