@@ -24,7 +24,7 @@
       border-radius: 12px;
       padding: 20px;
       margin-bottom: 20px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
     }
 
     .stat-header {
@@ -71,7 +71,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <script>
     const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
-
     const karmaCache = new Map();
 
     function parseCSV(text) {
@@ -97,7 +96,7 @@
         }
       }
     }
-//huh
+
     async function fetchKarma(userId) {
       if (karmaCache.has(userId)) return karmaCache.get(userId);
       const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
@@ -197,7 +196,16 @@
       }
     }
 
+    // First load
     renderStats();
+
+    // After 1-minute delay, auto-refresh every 10 minutes
+    setTimeout(() => {
+      setInterval(() => {
+        karmaCache.clear();
+        renderStats();
+      }, 10 * 60 * 1000); // 10 minutes
+    }, 60 * 1000); // 1-minute initial delay
   </script>
 </body>
 </html>
