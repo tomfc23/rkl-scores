@@ -37,7 +37,7 @@
   </style>
 </head>
 <body>
-  <h2>Karma League - Today's Games updated 2.0</h2>
+  <h2>Karma League - Today's Games updated 2.1</h2>
   <div>
     <label for="game-select">Select a game:</label>
     <select id="game-select"><option>Loading...</option></select>
@@ -126,9 +126,6 @@
 
   return { lines: results, total: Math.round(teamScore) };
 }
-
-    return { lines: results, total: teamScore };
-  }
 
   async function loadSelectedGame() {
     const select = document.getElementById('game-select');
