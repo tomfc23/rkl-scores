@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RKL Live Stats</title>
+  <style>
+    body {
+      background-color: #1a1a1a;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      padding: 20px;
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 30px;
+      font-size: 24px;
+      font-weight: 600;
+    }
+
+    .stat-section {
+      background-color: #2a2a2a;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+
+    .stat-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+    }
+
+    .stat-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .stat-content {
+      margin-top: 10px;
+      display: none;
+    }
+
+    .stat-content.visible {
+      display: block;
+    }
+
+    .stat-list-item {
+      padding: 4px 0;
+      font-size: 14px;
+    }
+
+    .loading, .error {
+      text-align: center;
+      padding: 40px;
+      font-size: 16px;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <h2>RKL Live Stats</h2>
+
+  <div id="stats-container">
+    <div class="loading">Loading stats...</div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
+  <script>
+    const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
+
+    const karmaCache = new Map();
+
+    function parseCSV(text) {
+      const lines = text.trim().split('\n');
+      const headers = lines[0].split(',').map(h => h.trim());
+      return lines.slice(1).map(line => {
+        const parts = line.split(',').map(p => p.trim());
+        const obj = {};
+        headers.forEach((h, i) => {
+          obj[h] = parts[i];
+        });
+        return obj;
+      });
+    }
+
+    async function fetchWithRetry(url, retries = 3, delayMs = 1000) {
+      for (let i = 0; i < retries; i++) {
+        try {
+          return await axios.get(url);
+        } catch (e) {
+          if (i === retries - 1) throw e;
+          await new Promise(r => setTimeout(r, delayMs));
+        }
+      }
+    }
+
+    async function fetchKarma(userId) {
+      if (karmaCache.has(userId)) return karmaCache.get(userId);
+      const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
+      try {
+        const res = await fetchWithRetry(proxyUrl);
+        const data = JSON.parse(res.data.contents);
+        const delta = data?.stats?.karmaDelta;
+        const val = typeof delta === 'number' ? delta : Number(delta) || 0;
+        karmaCache.set(userId, val);
+        return val;
+      } catch (err) {
+        return 0;
+      }
+    }
+
+    function toggleSection(el) {
+      el.classList.toggle('visible');
+    }
+
+    function createStatSection(title, list) {
+      const section = document.createElement('div');
+      section.className = 'stat-section';
+
+      const header = document.createElement('div');
+      header.className = 'stat-header';
+
+      const label = document.createElement('div');
+      label.className = 'stat-title';
+      label.textContent = title;
+
+      const firstLine = document.createElement('div');
+      firstLine.className = 'stat-list-item';
+      firstLine.innerHTML = list[0];
+
+      const content = document.createElement('div');
+      content.className = 'stat-content';
+      list.forEach((line, i) => {
+        const item = document.createElement('div');
+        item.className = 'stat-list-item';
+        item.textContent = `${i + 1}. ${line}`;
+        content.appendChild(item);
+      });
+
+      header.appendChild(label);
+      section.appendChild(header);
+      section.appendChild(firstLine);
+      section.appendChild(content);
+
+      header.addEventListener('click', () => toggleSection(content));
+      return section;
+    }
+
+    async function renderStats() {
+      const container = document.getElementById('stats-container');
+      try {
+        const response = await axios.get(rosterCsvUrl);
+        const players = parseCSV(response.data).filter(p => p['playing?']?.toLowerCase() === 'yes');
+
+        const teamScores = {};
+        const userScores = [];
+
+        for (const p of players) {
+          const userId = p['User ID'];
+          const userAt = p['User @'] || 'unknown';
+          const role = (p['role'] || '').toLowerCase();
+          const isCaptain = role === 'captain';
+          const team = p.Team;
+          const deduction = parseFloat(p.deductions || 0);
+          const karma = await fetchKarma(userId);
+          const adjusted = karma - deduction;
+          const boosted = isCaptain ? adjusted * 1.5 : adjusted;
+
+          userScores.push({ name: `${userAt}${isCaptain ? ' (c)' : ''}`, score: boosted });
+
+          if (!teamScores[team]) teamScores[team] = 0;
+          teamScores[team] += boosted;
+        }
+
+        const teamList = Object.entries(teamScores).map(([team, score]) => ({ team, score }));
+        const sortedTeams = teamList.sort((a, b) => b.score - a.score);
+        const sortedUsers = userScores.sort((a, b) => b.score - a.score);
+
+        const median = sortedTeams.length % 2 === 1
+          ? Math.round(sortedTeams[Math.floor(sortedTeams.length / 2)].score)
+          : Math.round((sortedTeams[sortedTeams.length / 2 - 1].score + sortedTeams[sortedTeams.length / 2].score) / 2);
+
+        container.innerHTML = '';
+        container.appendChild(createStatSection("Top 3 Teams", sortedTeams.slice(0, 3).map(t => `${t.team}: ${Math.round(t.score)}`)));
+        container.appendChild(createStatSection("Bottom 3 Teams", sortedTeams.slice(-3).map(t => `${t.team}: ${Math.round(t.score)}`)));
+        container.appendChild(createStatSection("League Median Score", [`${median}`]));
+        container.appendChild(createStatSection("Top 5 Users", sortedUsers.slice(0, 5).map(u => `${u.name}: ${Math.round(u.score)}`)));
+        container.appendChild(createStatSection("Bottom 5 Users", sortedUsers.slice(-5).map(u => `${u.name}: ${Math.round(u.score)}`)));
+      } catch (err) {
+        console.error(err);
+        container.innerHTML = '<div class="error">Failed to load stats.</div>';
+      }
+    }
+
+    renderStats();
+  </script>
+</body>
+</html>
