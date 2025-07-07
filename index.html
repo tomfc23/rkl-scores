@@ -12,34 +12,30 @@
     }
     .game-container {
       border: 1px solid #ccc;
-      padding: 12px;
-      margin-bottom: 16px;
       border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 20px;
     }
-    .team-row {
-      display: flex;
-      justify-content: space-between;
+    .team {
+      margin: 10px 0;
+    }
+    .team-name {
       font-weight: bold;
-      margin-top: 6px;
+      font-size: 1.1em;
     }
-    .team-info {
+    .roster {
       margin-left: 10px;
-      font-weight: normal;
-      font-size: 0.9em;
-    }
-    .roster-line {
-      font-size: 0.9em;
-      margin-left: 15px;
     }
   </style>
 </head>
 <body>
-  <h2>Karma League - Today's Games - updated?</h2>
-  <div id="games-schedule">Loading games...</div>
+  <h2>Karma League - Today's Matchups 2.0</h2>
+  <button onclick="loadKarmaLeague()">Refresh League</button>
+  <div id="games"></div>
 
   <script>
-    const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
-    const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
+    const scheduleUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
+    const rosterUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
 
     function parseCSV(text) {
       const lines = text.trim().split('\n');
@@ -48,17 +44,10 @@
         const parts = line.split(',').map(p => p.trim());
         let obj = {};
         headers.forEach((h, i) => {
-          obj[h] = parts[i];
+          obj[h] = parts[i] || '';
         });
         return obj;
       });
-    }
-
-    function getTodayString() {
-      const today = new Date();
-      const month = today.getMonth() + 1;
-      const day = today.getDate();
-      return `${month}/${day}`;
     }
 
     async function fetchKarma(userId) {
@@ -67,101 +56,110 @@
       try {
         const response = await axios.get(proxyUrl);
         const data = JSON.parse(response.data.contents);
-        return Number(data.stats.karmaDelta || 0);
+        return data.stats.karmaDelta || 0;
       } catch (e) {
-        console.error(`Error fetching karma for ${userId}:`, e);
+        console.error(`Error fetching karma for ${userId}`, e);
         return null;
       }
     }
 
-    async function loadTodayGames() {
-      const container = document.getElementById('games-schedule');
-      container.innerText = 'Loading schedule...';
+    async function loadKarmaLeague() {
+      const gamesDiv = document.getElementById('games');
+      gamesDiv.innerHTML = 'Loading...';
 
       try {
-        const [scheduleResp, rosterResp] = await Promise.all([
-          axios.get(scheduleCsvUrl),
-          axios.get(rosterCsvUrl)
+        const [scheduleRes, rosterRes] = await Promise.all([
+          axios.get(scheduleUrl),
+          axios.get(rosterUrl)
         ]);
-        const games = parseCSV(scheduleResp.data);
-        const players = parseCSV(rosterResp.data);
 
-        const today = getTodayString();
-        const todaysGames = games.filter(g => g['Date'] === today);
-        if (todaysGames.length === 0) {
-          container.innerText = 'No games scheduled for today.';
+        const schedule = parseCSV(scheduleRes.data);
+        const rosters = parseCSV(rosterRes.data);
+
+        const today = new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York' });
+
+        // Filter today's games
+        const todayGames = schedule.filter(g => g['Date'].trim() === today);
+
+        if (todayGames.length === 0) {
+          gamesDiv.innerHTML = 'No games scheduled for today.';
           return;
         }
 
-        container.innerHTML = '';
+        gamesDiv.innerHTML = '';
 
-        for (const game of todaysGames) {
-          const team1 = game['Team 1'];
-          const team2 = game['Team 2'];
+        for (const game of todayGames) {
+          const team1 = game['Team 1'].trim();
+          const team2 = game['Team 2'].trim();
 
-          const team1Players = players.filter(p =>
-            p.Team === team1 && p['playing?'].toLowerCase() === 'yes'
-          );
-          const team2Players = players.filter(p =>
-            p.Team === team2 && p['playing?'].toLowerCase() === 'yes'
-          );
+          const gameContainer = document.createElement('div');
+          gameContainer.className = 'game-container';
 
-          const [team1Roster, team2Roster] = await Promise.all([
-            Promise.all(team1Players.map(async p => {
-              const userId = p['User ID']?.trim();
-              if (!userId || userId.toLowerCase() === 'not found') {
-                return `${p['User @']}: missing user ID`;
-              }
+          const team1Div = document.createElement('div');
+          team1Div.className = 'team';
+          const team1Name = document.createElement('div');
+          team1Name.className = 'team-name';
+          team1Name.innerText = `${team1}`;
+          const team1Roster = document.createElement('div');
+          team1Roster.className = 'roster';
+          team1Roster.innerText = 'Loading roster...';
 
-              const karma = await fetchKarma(userId);
-              if (karma === null) return `${p['User @']}: error`;
+          const team2Div = document.createElement('div');
+          team2Div.className = 'team';
+          const team2Name = document.createElement('div');
+          team2Name.className = 'team-name';
+          team2Name.innerText = `${team2}`;
+          const team2Roster = document.createElement('div');
+          team2Roster.className = 'roster';
+          team2Roster.innerText = 'Loading roster...';
 
-              const deduction = parseFloat(p['deductions'] || 0);
-              const adjusted = karma - deduction;
-              const role = (p['role'] || '').trim().toLowerCase();
-              const label = `${p['User @']}${role === 'captain' ? ' (c)' : ''}`;
-              return `${label}: ${adjusted}`;
-            })),
+          team1Div.appendChild(team1Name);
+          team1Div.appendChild(team1Roster);
+          team2Div.appendChild(team2Name);
+          team2Div.appendChild(team2Roster);
+          gameContainer.appendChild(team1Div);
+          gameContainer.appendChild(team2Div);
+          gamesDiv.appendChild(gameContainer);
 
-            Promise.all(team2Players.map(async p => {
-              const userId = p['User ID']?.trim();
-              if (!userId || userId.toLowerCase() === 'not found') {
-                return `${p['User @']}: missing user ID`;
-              }
-
-              const karma = await fetchKarma(userId);
-              if (karma === null) return `${p['User @']}: error`;
-
-              const deduction = parseFloat(p['deductions'] || 0);
-              const adjusted = karma - deduction;
-              const role = (p['role'] || '').trim().toLowerCase();
-              const label = `${p['User @']}${role === 'captain' ? ' (c)' : ''}`;
-              return `${label}: ${adjusted}`;
-            }))
-          ]);
-
-          const gameDiv = document.createElement('div');
-          gameDiv.className = 'game-container';
-          gameDiv.innerHTML = `
-            <div class="team-row">
-              <div>${team1} <span class="team-info">score will show here</span></div>
-            </div>
-            ${team1Roster.map(p => `<div class="roster-line">${p}</div>`).join('')}
-            <div class="team-row" style="margin-top: 10px;">
-              <div>${team2} <span class="team-info">score will show here</span></div>
-            </div>
-            ${team2Roster.map(p => `<div class="roster-line">${p}</div>`).join('')}
-          `;
-          container.appendChild(gameDiv);
+          loadTeamRoster(team1, rosters, team1Roster);
+          loadTeamRoster(team2, rosters, team2Roster);
         }
-
-      } catch (err) {
-        container.innerText = 'Error loading schedule or roster.';
-        console.error(err);
+      } catch (e) {
+        gamesDiv.innerText = 'Error loading schedule or rosters.';
+        console.error(e);
       }
     }
 
-    loadTodayGames();
+    async function loadTeamRoster(teamName, rosterData, container) {
+      const players = rosterData.filter(player =>
+        player['Team'].trim() === teamName &&
+        player['playing?'].trim().toLowerCase() === 'yes' &&
+        player['User ID'].trim() !== '' &&
+        player['User ID'].trim().toLowerCase() !== 'not found'
+      );
+
+      const rosterLines = [];
+
+      for (const player of players) {
+        const userId = player['User ID'].trim();
+        const userAt = player['User @'].trim();
+        const role = (player['role'] || '').trim().toLowerCase();
+        const deduction = parseInt(player['deductions'] || '0');
+
+        const karma = await fetchKarma(userId);
+        if (karma === null) {
+          rosterLines.push(`${userAt}: error`);
+        } else {
+          const score = karma - deduction;
+          const cap = role === 'captain' ? ' (c)' : '';
+          rosterLines.push(`${userAt}${cap}: ${score}`);
+        }
+      }
+
+      container.innerText = rosterLines.length ? rosterLines.join('\n') : 'No active players';
+    }
+
+    loadKarmaLeague();
   </script>
 </body>
 </html>
