@@ -31,10 +31,13 @@
       font-size: 0.9em;
       margin-left: 15px;
     }
+    .negative {
+      color: red;
+    }
   </style>
 </head>
 <body>
-  <h2>Karma League - Today's Games - delay</h2>
+  <h2>Karma League - Today's Games - negative</h2>
   <div id="games-schedule">Loading games...</div>
 
   <script>
@@ -46,7 +49,7 @@
       const headers = lines[0].split(',').map(h => h.trim());
       return lines.slice(1).map(line => {
         const parts = line.split(',').map(p => p.trim());
-        let obj = {};
+        const obj = {};
         headers.forEach((h, i) => {
           obj[h] = parts[i];
         });
@@ -68,10 +71,12 @@
     async function fetchKarma(userId) {
       const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
       const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
+
       try {
         const response = await axios.get(proxyUrl);
         const data = JSON.parse(response.data.contents);
-        return Number(data.stats.karmaDelta || 0);
+        const delta = data?.stats?.karmaDelta;
+        return typeof delta === 'number' ? delta : Number(delta) || 0;
       } catch (e) {
         console.error(`Error fetching karma for ${userId}:`, e);
         return null;
@@ -84,16 +89,17 @@
       for (const p of players) {
         const userId = p['User ID']?.trim();
         const userAt = p['User @']?.trim() || 'Unknown';
+
         if (!userId || userId.toLowerCase() === 'not found') {
           results.push(`${userAt}: missing user ID`);
           continue;
         }
 
-        await delay(300); // add delay between API calls
+        await delay(300); // prevent API overload
 
         const karma = await fetchKarma(userId);
         if (karma === null) {
-          results.push(`${userAt}: error`);
+          results.push(`${userAt}: error fetching`);
           continue;
         }
 
@@ -101,7 +107,8 @@
         const adjusted = karma - deduction;
         const role = (p['role'] || '').trim().toLowerCase();
         const label = `${userAt}${role === 'captain' ? ' (c)' : ''}`;
-        results.push(`${label}: ${adjusted}`);
+        const formatted = `<span class="${adjusted < 0 ? 'negative' : ''}">${adjusted}</span>`;
+        results.push(`${label}: ${formatted}`);
       }
 
       return results;
@@ -116,10 +123,11 @@
           axios.get(scheduleCsvUrl),
           axios.get(rosterCsvUrl)
         ]);
+
         const games = parseCSV(scheduleResp.data);
         const players = parseCSV(rosterResp.data);
-
         const today = getTodayString();
+
         const todaysGames = games.filter(g => g['Date'] === today);
         if (todaysGames.length === 0) {
           container.innerText = 'No games scheduled for today.';
@@ -156,10 +164,9 @@
           `;
           container.appendChild(gameDiv);
         }
-
       } catch (err) {
         container.innerText = 'Error loading schedule or roster.';
-        console.error(err);
+        console.error('Schedule/roster load error:', err);
       }
     }
 
