@@ -34,47 +34,15 @@
     .negative {
       color: red;
     }
-    .error {
-      color: orange;
-    }
-    .loading {
-      color: blue;
-    }
-    .retry-btn {
-      background: #007bff;
-      color: white;
-      border: none;
-      padding: 5px 10px;
-      border-radius: 3px;
-      cursor: pointer;
-      font-size: 12px;
-      margin-left: 10px;
-    }
-    .retry-btn:hover {
-      background: #0056b3;
-    }
-    .status {
-      margin-bottom: 15px;
-      padding: 10px;
-      border-radius: 5px;
-      background: #f8f9fa;
-      border: 1px solid #dee2e6;
-    }
   </style>
 </head>
 <body>
-  <h2>Karma League - Today's Games - claude</h2>
-  <div id="status" class="status">Loading games...</div>
-  <div id="games-schedule"></div>
+  <h2>Karma League - Today's Games - negative</h2>
+  <div id="games-schedule">Loading games...</div>
 
   <script>
     const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
     const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
-
-    // Global state for retries
-    let gameData = [];
-    let retryCount = 0;
-    const maxRetries = 3;
 
     function parseCSV(text) {
       const lines = text.trim().split('\n');
@@ -96,149 +64,64 @@
       return `${month}/${day}`;
     }
 
-    function updateStatus(message) {
-      document.getElementById('status').innerHTML = message;
+    function delay(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    // Improved delay with exponential backoff
-    function delay(ms, attempt = 0) {
-      const backoffMs = ms * Math.pow(1.5, attempt);
-      return new Promise(resolve => setTimeout(resolve, backoffMs));
-    }
-
-    // Retry logic with exponential backoff
-    async function fetchWithRetry(url, maxAttempts = 3) {
-      for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        try {
-          const response = await axios.get(url, {
-            timeout: 10000, // 10 second timeout
-            headers: {
-              'User-Agent': 'KarmaLeague/1.0'
-            }
-          });
-          
-          if (response.status === 200) {
-            return response;
-          }
-          throw new Error(`HTTP ${response.status}`);
-        } catch (error) {
-          console.warn(`Attempt ${attempt + 1} failed for ${url}:`, error.message);
-          
-          if (attempt < maxAttempts - 1) {
-            await delay(1000, attempt); // Exponential backoff
-          } else {
-            throw error;
-          }
-        }
-      }
-    }
-
-    async function fetchKarma(userId, attempt = 0) {
-      if (!userId || userId.toLowerCase() === 'not found') {
-        return { error: 'missing_id' };
-      }
-
+    async function fetchKarma(userId) {
       const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
-      
-      // Try multiple proxy services
-      const proxyServices = [
-        `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`,
-        `https://cors-anywhere.herokuapp.com/${apiUrl}`,
-        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(apiUrl)}`
-      ];
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
 
-      for (const proxyUrl of proxyServices) {
-        try {
-          const response = await fetchWithRetry(proxyUrl, 2);
-          
-          let data;
-          if (response.data.contents) {
-            // allorigins format
-            data = JSON.parse(response.data.contents);
-          } else {
-            // direct format
-            data = response.data;
-          }
-          
-          const delta = data?.stats?.karmaDelta;
-          return { karma: typeof delta === 'number' ? delta : Number(delta) || 0 };
-        } catch (error) {
-          console.warn(`Proxy ${proxyUrl} failed:`, error.message);
+      try {
+        const response = await axios.get(proxyUrl);
+        const data = JSON.parse(response.data.contents);
+        const delta = data?.stats?.karmaDelta;
+        return typeof delta === 'number' ? delta : Number(delta) || 0;
+      } catch (e) {
+        console.error(`Error fetching karma for ${userId}:`, e);
+        return null;
+      }
+    }
+
+    async function processRoster(players) {
+      const results = [];
+
+      for (const p of players) {
+        const userId = p['User ID']?.trim();
+        const userAt = p['User @']?.trim() || 'Unknown';
+
+        if (!userId || userId.toLowerCase() === 'not found') {
+          results.push(`${userAt}: missing user ID`);
           continue;
         }
-      }
 
-      return { error: 'fetch_failed' };
-    }
+        await delay(300); // prevent API overload
 
-    async function processRoster(players, teamName) {
-      const results = [];
-      const batchSize = 3; // Process in smaller batches
-      
-      updateStatus(`Processing ${teamName} roster...`);
-
-      for (let i = 0; i < players.length; i += batchSize) {
-        const batch = players.slice(i, i + batchSize);
-        const batchPromises = batch.map(async (player, index) => {
-          const userId = player['User ID']?.trim();
-          const userAt = player['User @']?.trim() || 'Unknown';
-          const role = (player['role'] || '').trim().toLowerCase();
-          const deduction = parseFloat(player['deductions'] || 0);
-          const label = `${userAt}${role === 'captain' ? ' (c)' : ''}`;
-
-          // Add delay based on batch position
-          await delay(800 * index);
-
-          const result = await fetchKarma(userId);
-          
-          if (result.error) {
-            const errorMsg = result.error === 'missing_id' ? 'missing user ID' : 'error fetching';
-            return `${label}: <span class="error">${errorMsg}</span>`;
-          }
-
-          const adjusted = result.karma - deduction;
-          const formatted = `<span class="${adjusted < 0 ? 'negative' : ''}">${adjusted}</span>`;
-          return `${label}: ${formatted}`;
-        });
-
-        const batchResults = await Promise.all(batchPromises);
-        results.push(...batchResults);
-
-        // Delay between batches
-        if (i + batchSize < players.length) {
-          await delay(1500);
+        const karma = await fetchKarma(userId);
+        if (karma === null) {
+          results.push(`${userAt}: error fetching`);
+          continue;
         }
+
+        const deduction = parseFloat(p['deductions'] || 0);
+        const adjusted = karma - deduction;
+        const role = (p['role'] || '').trim().toLowerCase();
+        const label = `${userAt}${role === 'captain' ? ' (c)' : ''}`;
+        const formatted = `<span class="${adjusted < 0 ? 'negative' : ''}">${adjusted}</span>`;
+        results.push(`${label}: ${formatted}`);
       }
 
       return results;
     }
 
-    async function retryFailedFetches() {
-      if (retryCount >= maxRetries) {
-        updateStatus('Maximum retries reached. Some data may be incomplete.');
-        return;
-      }
-
-      retryCount++;
-      updateStatus(`Retrying failed fetches (attempt ${retryCount}/${maxRetries})...`);
-      
-      await delay(2000); // Wait before retry
-      await loadTodayGames(true);
-    }
-
-    async function loadTodayGames(isRetry = false) {
+    async function loadTodayGames() {
       const container = document.getElementById('games-schedule');
-      
-      if (!isRetry) {
-        container.innerHTML = '';
-        retryCount = 0;
-        updateStatus('Loading schedule and roster data...');
-      }
+      container.innerText = 'Loading schedule...';
 
       try {
         const [scheduleResp, rosterResp] = await Promise.all([
-          fetchWithRetry(scheduleCsvUrl),
-          fetchWithRetry(rosterCsvUrl)
+          axios.get(scheduleCsvUrl),
+          axios.get(rosterCsvUrl)
         ]);
 
         const games = parseCSV(scheduleResp.data);
@@ -247,22 +130,15 @@
 
         const todaysGames = games.filter(g => g['Date'] === today);
         if (todaysGames.length === 0) {
-          updateStatus('No games scheduled for today.');
+          container.innerText = 'No games scheduled for today.';
           return;
         }
 
-        if (!isRetry) {
-          gameData = todaysGames;
-          container.innerHTML = '';
-        }
+        container.innerHTML = '';
 
-        let hasErrors = false;
-
-        for (const [index, game] of todaysGames.entries()) {
+        for (const game of todaysGames) {
           const team1 = game['Team 1'];
           const team2 = game['Team 2'];
-
-          updateStatus(`Processing game ${index + 1}/${todaysGames.length}: ${team1} vs ${team2}`);
 
           const team1Players = players.filter(p =>
             p.Team === team1 && p['playing?'].toLowerCase() === 'yes'
@@ -271,61 +147,28 @@
             p.Team === team2 && p['playing?'].toLowerCase() === 'yes'
           );
 
-          const team1Roster = await processRoster(team1Players, team1);
-          const team2Roster = await processRoster(team2Players, team2);
-
-          // Check for errors
-          const team1Errors = team1Roster.filter(r => r.includes('error')).length;
-          const team2Errors = team2Roster.filter(r => r.includes('error')).length;
-          
-          if (team1Errors > 0 || team2Errors > 0) {
-            hasErrors = true;
-          }
+          const team1Roster = await processRoster(team1Players);
+          const team2Roster = await processRoster(team2Players);
 
           const gameDiv = document.createElement('div');
           gameDiv.className = 'game-container';
           gameDiv.innerHTML = `
             <div class="team-row">
-              <div>${team1} <span class="team-info">${team1Errors > 0 ? `(${team1Errors} errors)` : 'loaded successfully'}</span></div>
+              <div>${team1} <span class="team-info">score will show here</span></div>
             </div>
             ${team1Roster.map(p => `<div class="roster-line">${p}</div>`).join('')}
             <div class="team-row" style="margin-top: 10px;">
-              <div>${team2} <span class="team-info">${team2Errors > 0 ? `(${team2Errors} errors)` : 'loaded successfully'}</span></div>
+              <div>${team2} <span class="team-info">score will show here</span></div>
             </div>
             ${team2Roster.map(p => `<div class="roster-line">${p}</div>`).join('')}
           `;
-          
-          if (isRetry) {
-            const existingGame = container.children[index];
-            if (existingGame) {
-              container.replaceChild(gameDiv, existingGame);
-            } else {
-              container.appendChild(gameDiv);
-            }
-          } else {
-            container.appendChild(gameDiv);
-          }
-
-          // Add delay between games
-          if (index < todaysGames.length - 1) {
-            await delay(2000);
-          }
+          container.appendChild(gameDiv);
         }
-
-        if (hasErrors && retryCount < maxRetries) {
-          updateStatus(`Loading complete with some errors. <button class="retry-btn" onclick="retryFailedFetches()">Retry Failed</button>`);
-        } else {
-          updateStatus(`Loading complete! ${hasErrors ? 'Some errors remain after retries.' : 'All data loaded successfully.'}`);
-        }
-
       } catch (err) {
-        updateStatus(`Error loading data: ${err.message}`);
+        container.innerText = 'Error loading schedule or roster.';
         console.error('Schedule/roster load error:', err);
       }
     }
-
-    // Make retry function globally available
-    window.retryFailedFetches = retryFailedFetches;
 
     loadTodayGames();
   </script>
