@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Karma League Scores 2.0</title>
+  <title>Karma League Scores 1.2</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
     body {
@@ -56,182 +56,191 @@
   <button id="refreshBtn" class="refresh-button" disabled>Refresh Scores</button>
   <div id="games-schedule">Loading games...</div>
 
- <!-- Truncated: <head> and styles remain unchanged -->
-<script>
-  const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
-  const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
+  <script>
+    const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
+    const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
 
-  const karmaCache = new Map();
-  const failedUserIds = new Set();
+    const karmaCache = new Map();
+    const failedUserIds = new Set();
 
-  function parseCSV(text) {
-    const lines = text.trim().split('\n');
-    const headers = lines[0].split(',').map(h => h.trim());
-    return lines.slice(1).map(line => {
-      const parts = line.split(',').map(p => p.trim());
-      const obj = {};
-      headers.forEach((h, i) => {
-        obj[h] = parts[i];
+    function parseCSV(text) {
+      const lines = text.trim().split('\n');
+      const headers = lines[0].split(',').map(h => h.trim());
+      return lines.slice(1).map(line => {
+        const parts = line.split(',').map(p => p.trim());
+        const obj = {};
+        headers.forEach((h, i) => {
+          obj[h] = parts[i];
+        });
+        return obj;
       });
-      return obj;
-    });
-  }
+    }
 
-  function getTodayString() {
-    const now = new Date();
-    const est = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
-    if (est.getHours() < 7) est.setDate(est.getDate() - 1);
-    return `${est.getMonth() + 1}/${est.getDate()}`;
-  }
+    function getTodayString() {
+      const now = new Date();
+      const est = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+      if (est.getHours() < 7) est.setDate(est.getDate() - 1);
+      return `${est.getMonth() + 1}/${est.getDate()}`;
+    }
 
-  async function fetchKarma(userId) {
-    if (karmaCache.has(userId)) return karmaCache.get(userId);
+    async function fetchKarma(userId, attempts = 2) {
+      if (karmaCache.has(userId)) return karmaCache.get(userId);
 
-    const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
-    try {
-      const response = await axios.get(proxyUrl);
-      const data = JSON.parse(response.data.contents);
-      const delta = data?.stats?.karmaDelta;
-      const value = typeof delta === 'number' ? delta : Number(delta) || 0;
-      karmaCache.set(userId, value);
-      failedUserIds.delete(userId);
-      return value;
-    } catch (e) {
-      console.error(`Error fetching karma for ${userId}:`, e);
+      const directApiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
+      const proxy1 = `https://api.allorigins.win/get?url=${encodeURIComponent(directApiUrl)}`;
+      const proxy2 = `https://thingproxy.freeboard.io/fetch/?url=${encodeURIComponent(directApiUrl)}`;
+
+      const tryFetch = async (proxyUrl) => {
+        const response = await axios.get(proxyUrl);
+        const data = JSON.parse(response.data.contents || response.data);
+        const delta = data?.stats?.karmaDelta;
+        return typeof delta === 'number' ? delta : Number(delta) || 0;
+      };
+
+      for (let i = 0; i < attempts; i++) {
+        try {
+          const proxyUrl = i === 0 ? proxy1 : proxy2;
+          const value = await tryFetch(proxyUrl);
+          karmaCache.set(userId, value);
+          failedUserIds.delete(userId);
+          return value;
+        } catch (e) {
+          console.warn(`Attempt ${i + 1} failed for ${userId}:`, e.message);
+        }
+      }
+
       failedUserIds.add(userId);
+      karmaCache.set(userId, null);
       return null;
     }
-  }
 
-  async function processRoster(players) {
-    const results = [];
-    const limited = players.slice(0, 6); // show only first 6
+    async function processRoster(players) {
+      const results = [];
 
-    for (const p of limited) {
-      const userId = p['User ID']?.trim();
-      const userAt = p['User @']?.trim() || 'Unknown';
+      for (let i = 0; i < Math.min(players.length, 6); i++) {
+        const p = players[i];
+        const userId = p['User ID']?.trim();
+        const userAt = p['User @']?.trim() || 'Unknown';
 
-      if (!userId || userId.toLowerCase() === 'not found') {
-        results.push(`${userAt}: missing user ID`);
-        continue;
+        if (!userId || userId.toLowerCase() === 'not found') {
+          results.push(`${userAt}: missing user ID`);
+          continue;
+        }
+
+        const karma = await fetchKarma(userId);
+        if (karma === null) {
+          results.push(`${userAt}: error fetching`);
+          continue;
+        }
+
+        const deduction = parseFloat(p['deductions'] || 0);
+        const adjusted = karma - deduction;
+        const role = (p['role'] || '').trim().toLowerCase();
+        const label = `${userAt}${role === 'captain' ? ' (c)' : ''}`;
+        const formatted = `<span class="${adjusted < 0 ? 'negative' : ''}">${adjusted}</span>`;
+        results.push(`${label}: ${formatted}`);
       }
 
-      const karma = await fetchKarma(userId);
-      if (karma === null) {
-        results.push(`${userAt}: error fetching`);
-        continue;
-      }
-
-      const deduction = parseFloat(p['deductions'] || 0);
-      const adjusted = karma - deduction;
-      const role = (p['role'] || '').trim().toLowerCase();
-      const label = `${userAt}${role === 'captain' ? ' (c)' : ''}`;
-      const formatted = `<span class="${adjusted < 0 ? 'negative' : ''}">${adjusted}</span>`;
-      results.push(`${label}: ${formatted}`);
+      return results;
     }
 
-    return results;
-  }
+    async function loadTodayGames() {
+      const container = document.getElementById('games-schedule');
+      container.innerText = 'Loading schedule...';
 
-  async function loadTodayGames() {
-    const container = document.getElementById('games-schedule');
-    container.innerText = 'Loading schedule...';
-
-    try {
-      const [scheduleResp, rosterResp] = await Promise.all([
-        axios.get(scheduleCsvUrl),
-        axios.get(rosterCsvUrl)
-      ]);
-
-      const games = parseCSV(scheduleResp.data);
-      const players = parseCSV(rosterResp.data);
-      const today = getTodayString();
-
-      const todaysGames = games.filter(g => g['Date'] === today);
-      if (todaysGames.length === 0) {
-        container.innerText = 'No games scheduled for today.';
-        return;
-      }
-
-      container.innerHTML = '';
-
-      for (const game of todaysGames) {
-        const team1 = game['Team 1'];
-        const team2 = game['Team 2'];
-
-        const team1Players = players.filter(p => p.Team === team1 && p['playing?'].toLowerCase() === 'yes');
-        const team2Players = players.filter(p => p.Team === team2 && p['playing?'].toLowerCase() === 'yes');
-
-        const [team1Roster, team2Roster] = await Promise.all([
-          processRoster(team1Players),
-          processRoster(team2Players)
+      try {
+        const [scheduleResp, rosterResp] = await Promise.all([
+          axios.get(scheduleCsvUrl),
+          axios.get(rosterCsvUrl)
         ]);
 
-        const gameDiv = document.createElement('div');
-        gameDiv.className = 'game-container';
-        gameDiv.dataset.team1 = team1;
-        gameDiv.dataset.team2 = team2;
+        const games = parseCSV(scheduleResp.data);
+        const players = parseCSV(rosterResp.data);
+        const today = getTodayString();
 
-        gameDiv.innerHTML = `
-          <div class="team-row">
-            <div>${team1} <span class="team-info">score will show here</span></div>
-          </div>
-          ${team1Roster.map(p => `<div class="roster-line" data-user="${p}">${p}</div>`).join('')}
-          <div class="team-row" style="margin-top: 10px;">
-            <div>${team2} <span class="team-info">score will show here</span></div>
-          </div>
-          ${team2Roster.map(p => `<div class="roster-line" data-user="${p}">${p}</div>`).join('')}
-        `;
-        container.appendChild(gameDiv);
+        const todaysGames = games.filter(g => g['Date'] === today);
+        if (todaysGames.length === 0) {
+          container.innerText = 'No games scheduled for today.';
+          return;
+        }
+
+        container.innerHTML = '';
+
+        for (const game of todaysGames) {
+          const team1 = game['Team 1'];
+          const team2 = game['Team 2'];
+
+          const team1Players = players.filter(p => p.Team === team1 && p['playing?'].toLowerCase() === 'yes');
+          const team2Players = players.filter(p => p.Team === team2 && p['playing?'].toLowerCase() === 'yes');
+
+          const [team1Roster, team2Roster] = await Promise.all([
+            processRoster(team1Players),
+            processRoster(team2Players)
+          ]);
+
+          const gameDiv = document.createElement('div');
+          gameDiv.className = 'game-container';
+          gameDiv.dataset.team1 = team1;
+          gameDiv.dataset.team2 = team2;
+
+          gameDiv.innerHTML = `
+            <div class="team-row">
+              <div>${team1} <span class="team-info">score will show here</span></div>
+            </div>
+            ${team1Roster.map(p => `<div class="roster-line" data-user="${p}">${p}</div>`).join('')}
+            <div class="team-row" style="margin-top: 10px;">
+              <div>${team2} <span class="team-info">score will show here</span></div>
+            </div>
+            ${team2Roster.map(p => `<div class="roster-line" data-user="${p}">${p}</div>`).join('')}
+          `;
+          container.appendChild(gameDiv);
+        }
+      } catch (err) {
+        container.innerText = 'Error loading schedule or roster.';
+        console.error('Load error:', err);
       }
-    } catch (err) {
-      container.innerText = 'Error loading schedule or roster.';
-      console.error('Load error:', err);
     }
-  }
 
-  async function refreshFailedOnly() {
-    const container = document.getElementById('games-schedule');
-    const rosterLines = container.querySelectorAll('.roster-line');
+    async function refreshFailedOnly() {
+      const lines = document.querySelectorAll('.roster-line');
+      for (const line of lines) {
+        const text = line.textContent;
+        if (!text.includes('error fetching')) continue;
 
-    for (const line of rosterLines) {
-      const userText = line.textContent;
-      const match = userText.match(/@([\w.-]+)/);
-      const userAt = match ? match[1] : null;
+        const atMatch = text.match(/@([\w.-]+)/);
+        if (!atMatch) continue;
 
-      const userIdMatch = Object.entries(karmaCache).find(([id, value]) => value === null);
-      if (!userIdMatch) continue;
+        const label = atMatch[0];
+        const userId = [...karmaCache.entries()].find(([id]) => text.includes(id))?.[0];
 
-      const userId = userIdMatch[0];
-      if (!failedUserIds.has(userId)) continue;
+        if (!userId || !failedUserIds.has(userId)) continue;
 
-      const newKarma = await fetchKarma(userId);
-      if (newKarma !== null) {
-        const formatted = `<span class="${newKarma < 0 ? 'negative' : ''}">${newKarma}</span>`;
-        line.innerHTML = `${userText.split(':')[0]}: ${formatted}`;
+        const karma = await fetchKarma(userId);
+        if (karma !== null) {
+          const formatted = `<span class="${karma < 0 ? 'negative' : ''}">${karma}</span>`;
+          line.innerHTML = `${label}: ${formatted}`;
+        }
       }
     }
-  }
 
-  function setRefreshButtonState(enabled) {
-    const btn = document.getElementById('refreshBtn');
-    btn.disabled = !enabled;
-    btn.innerText = enabled ? 'Refresh Scores' : 'Please wait...';
-  }
+    function setRefreshButtonState(enabled) {
+      const btn = document.getElementById('refreshBtn');
+      btn.disabled = !enabled;
+      btn.innerText = enabled ? 'Refresh Scores' : 'Please wait...';
+    }
 
-  async function handleRefreshClick() {
-    setRefreshButtonState(false);
-    await refreshFailedOnly();
-    setTimeout(() => setRefreshButtonState(true), 5000);
-  }
+    async function handleRefreshClick() {
+      setRefreshButtonState(false);
+      await refreshFailedOnly();
+      setTimeout(() => setRefreshButtonState(true), 5000);
+    }
 
-  document.getElementById('refreshBtn').addEventListener('click', handleRefreshClick);
+    document.getElementById('refreshBtn').addEventListener('click', handleRefreshClick);
 
-  window.addEventListener('DOMContentLoaded', async () => {
-    await loadTodayGames();
-    setTimeout(() => setRefreshButtonState(true), 5000);
-  });
-</script>
+    window.addEventListener('DOMContentLoaded', async () => {
+      await loadTodayGames();
+      setTimeout(() => setRefreshButtonState(true), 5000);
+    });
+  </script>
 </body>
 </html>
