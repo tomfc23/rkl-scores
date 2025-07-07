@@ -1,1 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Karma League Scores</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+    .game-container {
+      border: 1px solid #ccc;
+      padding: 12px;
+      margin-top: 16px;
+      border-radius: 8px;
+    }
+    .team-row {
+      display: flex;
+      justify-content: space-between;
+      font-weight: bold;
+      margin-top: 6px;
+    }
+    .team-info {
+      margin-left: 10px;
+      font-weight: normal;
+      font-size: 0.9em;
+    }
+    .roster-line {
+      font-size: 0.9em;
+      margin-left: 15px;
+    }
+    .negative {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <h2>Karma League - Today's Games</h2>
+  <div>
+    <label for="game-select">Select a game:</label>
+    <select id="game-select"><option>Loading...</option></select>
+    <button onclick="loadSelectedGame()">Load Game</button>
+  </div>
+  <div id="game-output"></div>
+
+  <script>
+    const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
+    const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
+
+    let todaysGames = [];
+    let allPlayers = [];
+
+    function parseCSV(text) {
+      const lines = text.trim().split('\n');
+      const headers = lines[0].split(',').map(h => h.trim());
+      return lines.slice(1).map(line => {
+        const parts = line.split(',').map(p => p.trim());
+        const obj = {};
+        headers.forEach((h, i) => {
+          obj[h] = parts[i];
+        });
+        return obj;
+      });
+    }
+
+    function getTodayString() {
+      const today = new Date();
+      const month = today.getMonth() + 1;
+      const day = today.getDate();
+      return `${month}/${day}`;
+    }
+
+    function delay(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function fetchKarma(userId) {
+      const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
+
+      try {
+        const response = await axios.get(proxyUrl);
+        const data = JSON.parse(response.data.contents);
+        const delta = data?.stats?.karmaDelta;
+        return typeof delta === 'number' ? delta : Number(delta) || 0;
+      } catch (e) {
+        console.error(`Error fetching karma for ${userId}:`, e);
+        return null;
+      }
+    }
+
+    async function processRoster(players) {
+      const results = [];
+
+      for (const p of players) {
+        const userId = p['User ID']?.trim();
+        const userAt = p['User @']?.trim() || 'Unknown';
+
+        if (!userId || userId.toLowerCase() === 'not found') {
+          results.push(`${userAt}: missing user ID`);
+          continue;
+        }
+
+        await delay(500); // throttle API
+
+        const karma = await fetchKarma(userId);
+        if (karma === null) {
+          results.push(`${userAt}: error fetching`);
+          continue;
+        }
+
+        const deduction = parseFloat(p['deductions'] || 0);
+        const adjusted = karma - deduction;
+        const role = (p['role'] || '').trim().toLowerCase();
+        const label = `${userAt}${role === 'captain' ? ' (c)' : ''}`;
+        const formatted = `<span class="${adjusted < 0 ? 'negative' : ''}">${adjusted}</span>`;
+        results.push(`${label}: ${formatted}`);
+      }
+
+      return results;
+    }
+
+    async function loadSelectedGame() {
+      const select = document.getElementById('game-select');
+      const selectedIndex = select.selectedIndex;
+      if (selectedIndex < 0 || !todaysGames[selectedIndex]) return;
+
+      const game = todaysGames[selectedIndex];
+      const output = document.getElementById('game-output');
+      output.innerHTML = 'Loading game...';
+
+      const team1 = game['Team 1'];
+      const team2 = game['Team 2'];
+
+      const team1Players = allPlayers.filter(p =>
+        p.Team === team1 && p['playing?'].toLowerCase() === 'yes'
+      );
+      const team2Players = allPlayers.filter(p =>
+        p.Team === team2 && p['playing?'].toLowerCase() === 'yes'
+      );
+
+      const team1Roster = await processRoster(team1Players);
+      const team2Roster = await processRoster(team2Players);
+
+      output.innerHTML = `
+        <div class="game-container">
+          <div class="team-row">
+            <div>${team1} <span class="team-info">score will show here</span></div>
+          </div>
+          ${team1Roster.map(p => `<div class="roster-line">${p}</div>`).join('')}
+          <div class="team-row" style="margin-top: 10px;">
+            <div>${team2} <span class="team-info">score will show here</span></div>
+          </div>
+          ${team2Roster.map(p => `<div class="roster-line">${p}</div>`).join('')}
+        </div>
+      `;
+    }
+
+    async function init() {
+      const select = document.getElementById('game-select');
+      const output = document.getElementById('game-output');
+      select.innerHTML = '<option>Loading schedule...</option>';
+
+      try {
+        const [scheduleResp, rosterResp] = await Promise.all([
+          axios.get(scheduleCsvUrl),
+          axios.get(rosterCsvUrl)
+        ]);
+
+        const allGames = parseCSV(scheduleResp.data);
+        allPlayers = parseCSV(rosterResp.data);
+        const today = getTodayString();
+
+        todaysGames = allGames.filter(g => g['Date'] === today);
+        if (todaysGames.length === 0) {
+          select.innerHTML = '<option>No games today</option>';
+          return;
+        }
+
+        select.innerHTML = '';
+        todaysGames.forEach(game => {
+          const option = document.createElement('option');
+          option.text = `${game['Team 1']} vs ${game['Team 2']}`;
+          select.add(option);
+        });
+
+      } catch (err) {
+        output.innerText = 'Error loading schedule or roster.';
+        console.error('Load error:', err);
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
 
