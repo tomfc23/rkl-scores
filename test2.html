@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Karma League Scores</title>
+  <title>Karma League Scores 1.0</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
     body {
@@ -61,6 +61,7 @@
     const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
 
     const karmaCache = new Map();
+    const failedUserIds = new Set();
 
     function parseCSV(text) {
       const lines = text.trim().split('\n');
@@ -79,69 +80,53 @@
       const now = new Date();
       const est = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
       if (est.getHours() < 7) est.setDate(est.getDate() - 1);
-      const month = est.getMonth() + 1;
-      const day = est.getDate();
-      return `${month}/${day}`;
+      return `${est.getMonth() + 1}/${est.getDate()}`;
     }
 
-    function sleep(ms) {
-      return new Promise(res => setTimeout(res, ms));
-    }
-
-    async function fetchKarma(userId, retries = 3) {
+    async function fetchKarma(userId) {
       if (karmaCache.has(userId)) return karmaCache.get(userId);
 
       const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
       const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
-
-      for (let i = 0; i < retries; i++) {
-        try {
-          const response = await axios.get(proxyUrl);
-          const data = JSON.parse(response.data.contents);
-          const delta = data?.stats?.karmaDelta;
-          const val = typeof delta === 'number' ? delta : Number(delta) || 0;
-          karmaCache.set(userId, val);
-          return val;
-        } catch (e) {
-          if (i < retries - 1) await sleep(500);
-        }
+      try {
+        const response = await axios.get(proxyUrl);
+        const data = JSON.parse(response.data.contents);
+        const delta = data?.stats?.karmaDelta;
+        const value = typeof delta === 'number' ? delta : Number(delta) || 0;
+        karmaCache.set(userId, value);
+        failedUserIds.delete(userId);
+        return value;
+      } catch (e) {
+        console.error(`Error fetching karma for ${userId}:`, e);
+        failedUserIds.add(userId);
+        return null;
       }
-
-      return null;
     }
 
-    async function processRoster(players, concurrencyLimit = 3) {
+    async function processRoster(players) {
       const results = [];
-      const queue = [...players];
+      for (const p of players) {
+        const userId = p['User ID']?.trim();
+        const userAt = p['User @']?.trim() || 'Unknown';
 
-      async function worker() {
-        while (queue.length > 0) {
-          const p = queue.shift();
-          const userId = p['User ID']?.trim();
-          const userAt = p['User @']?.trim() || 'Unknown';
-
-          if (!userId || userId.toLowerCase() === 'not found') {
-            results.push(`${userAt}: missing user ID`);
-            continue;
-          }
-
-          const karma = await fetchKarma(userId);
-          if (karma === null) {
-            results.push(`${userAt}: error fetching`);
-            continue;
-          }
-
-          const deduction = parseFloat(p['deductions'] || 0);
-          const adjusted = karma - deduction;
-          const role = (p['role'] || '').trim().toLowerCase();
-          const label = `${userAt}${role === 'captain' ? ' (c)' : ''}`;
-          const formatted = `<span class="${adjusted < 0 ? 'negative' : ''}">${adjusted}</span>`;
-          results.push(`${label}: ${formatted}`);
+        if (!userId || userId.toLowerCase() === 'not found') {
+          results.push(`${userAt}: missing user ID`);
+          continue;
         }
-      }
 
-      const workers = Array.from({ length: concurrencyLimit }, worker);
-      await Promise.all(workers);
+        const karma = await fetchKarma(userId);
+        if (karma === null) {
+          results.push(`${userAt}: error fetching`);
+          continue;
+        }
+
+        const deduction = parseFloat(p['deductions'] || 0);
+        const adjusted = karma - deduction;
+        const role = (p['role'] || '').trim().toLowerCase();
+        const label = `${userAt}${role === 'captain' ? ' (c)' : ''}`;
+        const formatted = `<span class="${adjusted < 0 ? 'negative' : ''}">${adjusted}</span>`;
+        results.push(`${label}: ${formatted}`);
+      }
       return results;
     }
 
@@ -181,21 +166,47 @@
 
           const gameDiv = document.createElement('div');
           gameDiv.className = 'game-container';
+          gameDiv.dataset.team1 = team1;
+          gameDiv.dataset.team2 = team2;
+
           gameDiv.innerHTML = `
             <div class="team-row">
               <div>${team1} <span class="team-info">score will show here</span></div>
             </div>
-            ${team1Roster.map(p => `<div class="roster-line">${p}</div>`).join('')}
+            ${team1Roster.map(p => `<div class="roster-line" data-user="${p}">${p}</div>`).join('')}
             <div class="team-row" style="margin-top: 10px;">
               <div>${team2} <span class="team-info">score will show here</span></div>
             </div>
-            ${team2Roster.map(p => `<div class="roster-line">${p}</div>`).join('')}
+            ${team2Roster.map(p => `<div class="roster-line" data-user="${p}">${p}</div>`).join('')}
           `;
           container.appendChild(gameDiv);
         }
       } catch (err) {
         container.innerText = 'Error loading schedule or roster.';
-        console.error('Schedule/roster load error:', err);
+        console.error('Load error:', err);
+      }
+    }
+
+    async function refreshFailedOnly() {
+      const container = document.getElementById('games-schedule');
+      const rosterLines = container.querySelectorAll('.roster-line');
+
+      for (const line of rosterLines) {
+        const userText = line.textContent;
+        const match = userText.match(/@([\w.-]+)/);
+        const userAt = match ? match[1] : null;
+
+        const userIdMatch = Object.entries(karmaCache).find(([id, value]) => value === null);
+        if (!userIdMatch) continue;
+
+        const userId = userIdMatch[0];
+        if (!failedUserIds.has(userId)) continue;
+
+        const newKarma = await fetchKarma(userId);
+        if (newKarma !== null) {
+          const formatted = `<span class="${newKarma < 0 ? 'negative' : ''}">${newKarma}</span>`;
+          line.innerHTML = `${userText.split(':')[0]}: ${formatted}`;
+        }
       }
     }
 
@@ -207,14 +218,12 @@
 
     async function handleRefreshClick() {
       setRefreshButtonState(false);
-      karmaCache.clear(); // Optional: clear cache on refresh
-      await loadTodayGames();
+      await refreshFailedOnly();
       setTimeout(() => setRefreshButtonState(true), 5000);
     }
 
     document.getElementById('refreshBtn').addEventListener('click', handleRefreshClick);
 
-    // Initial load with delay on button activation
     window.addEventListener('DOMContentLoaded', async () => {
       await loadTodayGames();
       setTimeout(() => setRefreshButtonState(true), 5000);
