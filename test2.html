@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Karma League Scores 1.3</title>
+  <title>Karma League Scores 1.4</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
     body {
@@ -230,12 +230,7 @@
 
         if (!userAt) continue;
 
-        // We must find userId for this userAt from roster CSV (cached on initial load)
-        // This is tricky because we only have userAt on the line, so let's search roster players again
-
-        // Unfortunately roster players aren't globally stored, so to keep things simple
-        // we'll just do a fresh fetch of the roster CSV here (since errors should be rare, overhead acceptable)
-
+        // Fresh fetch roster CSV to find userId for this userAt
         try {
           const rosterResp = await axios.get(rosterCsvUrl);
           const players = parseCSV(rosterResp.data);
@@ -263,6 +258,8 @@
         }
       }
     }
+
+    // *** Updated Refresh Button Logic ***
 
     function setRefreshButtonState(enabled) {
       const btn = document.getElementById('refreshBtn');
