@@ -37,7 +37,7 @@
   </style>
 </head>
 <body>
-  <h2>Karma League - Today's Games updated</h2>
+  <h2>Karma League - Today's Games updated 2.0</h2>
   <div>
     <label for="game-select">Select a game:</label>
     <select id="game-select"><option>Loading...</option></select>
@@ -87,38 +87,45 @@
   }
 
   async function processRoster(players) {
-    const results = [];
-    let teamScore = 0;
+  const results = [];
+  let teamScore = 0;
 
-    for (const p of players) {
-      const userId = p['User ID']?.trim();
-      const userAt = p['User @']?.trim() || 'Unknown';
+  for (const p of players) {
+    const userId = p['User ID']?.trim();
+    const userAt = p['User @']?.trim() || 'Unknown';
 
-      if (!userId || userId.toLowerCase() === 'not found') {
-        results.push(`${userAt}: missing user ID`);
-        continue;
-      }
-
-      const karma = await fetchKarma(userId);
-      if (karma === null) {
-        results.push(`${userAt}: error fetching`);
-        continue;
-      }
-
-      const deduction = parseFloat(p['deductions'] || 0);
-      const adjusted = karma - deduction;
-      const role = (p['role'] || '').trim().toLowerCase();
-      const isCaptain = role === 'captain';
-      const boosted = isCaptain ? adjusted * 1.5 : adjusted;
-
-      teamScore += boosted;
-
-      const formattedBefore = `<span class="${adjusted < 0 ? 'negative' : ''}">${adjusted.toFixed(1)}</span>`;
-      const formattedAfter = `<span class="${boosted < 0 ? 'negative' : ''}">${boosted.toFixed(1)}</span>`;
-      const label = `${userAt}${isCaptain ? ' (c)' : ''}`;
-
-      results.push(`${label}: ${formattedBefore} → ${formattedAfter}`);
+    if (!userId || userId.toLowerCase() === 'not found') {
+      results.push(`${userAt}: missing user ID`);
+      continue;
     }
+
+    const karma = await fetchKarma(userId);
+    if (karma === null) {
+      results.push(`${userAt}: error fetching`);
+      continue;
+    }
+
+    const deduction = parseFloat(p['deductions'] || 0);
+    const adjusted = karma - deduction;
+    const role = (p['role'] || '').trim().toLowerCase();
+    const isCaptain = role === 'captain';
+    const boosted = isCaptain ? adjusted * 1.5 : adjusted;
+
+    teamScore += boosted;
+
+    const adjRounded = Math.round(adjusted);
+    const boostRounded = Math.round(boosted);
+    const label = `${userAt}${isCaptain ? ' (c)' : ''}`;
+
+    const formatted = isCaptain
+      ? `${label}: <span class="${adjRounded < 0 ? 'negative' : ''}">${adjRounded}</span> → <span class="${boostRounded < 0 ? 'negative' : ''}">${boostRounded}</span>`
+      : `${label}: <span class="${adjRounded < 0 ? 'negative' : ''}">${adjRounded}</span>`;
+
+    results.push(formatted);
+  }
+
+  return { lines: results, total: Math.round(teamScore) };
+}
 
     return { lines: results, total: teamScore };
   }
