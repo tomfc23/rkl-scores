@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Karma League Scores 1.4</title>
+  <title>Karma League Scores 1.5</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
     body {
@@ -52,7 +52,7 @@
   </style>
 </head>
 <body>
-  <h2>Karma League - Today's Games</h2>
+  <h2>Karma League - Today's Games 1.5</h2>
   <button id="refreshBtn" class="refresh-button" disabled>Refresh Scores</button>
   <div id="games-schedule">Loading games...</div>
 
@@ -89,32 +89,43 @@
       const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
       const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
       try {
-        const response = await axios.get(proxyUrl);
-        const data = JSON.parse(response.data.contents);
+        const response = await axios.get(proxyUrl, { timeout: 7000 });
+        let data;
+        try {
+          data = JSON.parse(response.data.contents);
+        } catch {
+          console.warn(`JSON parse failed for ${userId}`);
+          return null;
+        }
+
         const delta = data?.stats?.karmaDelta;
-        const value = typeof delta === 'number' ? delta : Number(delta) || 0;
+        const value = typeof delta === 'number' ? delta : Number(delta);
+        if (isNaN(value)) return null;
+
         karmaCache.set(userId, value);
         failedUserIds.delete(userId);
         return value;
       } catch (e) {
-        console.error(`Error fetching karma for ${userId}:`, e);
+        console.warn(`Fetch failed for ${userId}:`, e.message);
         failedUserIds.add(userId);
         return null;
       }
     }
 
-    async function fetchKarmaWithRetries(userId, retries = 2, delayMs = 500) {
+    async function fetchKarmaWithRetries(userId, retries = 4, delayMs = 800) {
       for (let attempt = 0; attempt <= retries; attempt++) {
         const result = await fetchKarma(userId);
         if (result !== null) return result;
+
         if (attempt < retries) {
-          await new Promise(r => setTimeout(r, delayMs * (attempt + 1)));
+          const backoff = delayMs * Math.pow(2, attempt);
+          await new Promise(resolve => setTimeout(resolve, backoff + Math.random() * 300));
         }
       }
       return null;
     }
 
-    async function processRosterParallel(players, concurrency = 3) {
+    async function processRosterParallel(players, concurrency = 2) {
       const results = new Array(players.length);
       let index = 0;
 
@@ -131,11 +142,13 @@
           }
 
           try {
+            await new Promise(resolve => setTimeout(resolve, Math.random() * 150)); // jitter
             const karma = await fetchKarmaWithRetries(userId);
             if (karma === null) {
               results[i] = `${userAt}: error fetching`;
               continue;
             }
+
             const deduction = parseFloat(p['deductions'] || 0);
             const adjusted = karma - deduction;
             const role = (p['role'] || '').trim().toLowerCase();
@@ -179,9 +192,8 @@
           const team1 = game['Team 1'];
           const team2 = game['Team 2'];
 
-          // Limit to first 6 players per team for testing
-          const team1Players = players.filter(p => p.Team === team1 && p['playing?'].toLowerCase() === 'yes').slice(0, 6);
-          const team2Players = players.filter(p => p.Team === team2 && p['playing?'].toLowerCase() === 'yes').slice(0, 6);
+          const team1Players = players.filter(p => p.Team === team1 && p['playing?'].toLowerCase() === 'yes');
+          const team2Players = players.filter(p => p.Team === team2 && p['playing?'].toLowerCase() === 'yes');
 
           const [team1Roster, team2Roster] = await Promise.all([
             processRosterParallel(team1Players),
@@ -215,22 +227,15 @@
       const container = document.getElementById('games-schedule');
       const rosterLines = container.querySelectorAll('.roster-line');
 
-      // Find userIds of failed fetches from cached failedUserIds set
-      const failedLines = [];
-      rosterLines.forEach(line => {
-        if (line.textContent.includes('error fetching')) {
-          failedLines.push(line);
-        }
-      });
+      const failedLines = Array.from(rosterLines).filter(line =>
+        line.textContent.includes('error fetching')
+      );
 
       for (const line of failedLines) {
-        // Extract userAt from line text
         const match = line.textContent.match(/@([\w.-]+)/);
         const userAt = match ? match[1] : null;
-
         if (!userAt) continue;
 
-        // Fresh fetch roster CSV to find userId for this userAt
         try {
           const rosterResp = await axios.get(rosterCsvUrl);
           const players = parseCSV(rosterResp.data);
@@ -252,14 +257,11 @@
           const label = `${userAt}${role === 'captain' ? ' (c)' : ''}`;
           const formatted = `<span class="${adjusted < 0 ? 'negative' : ''}">${adjusted}</span>`;
           line.innerHTML = `${label}: ${formatted}`;
-
         } catch (e) {
           console.error('Error refreshing failed user:', e);
         }
       }
     }
-
-    // *** Updated Refresh Button Logic ***
 
     function setRefreshButtonState(enabled) {
       const btn = document.getElementById('refreshBtn');
