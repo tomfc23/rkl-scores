@@ -41,7 +41,7 @@
   </style>
 </head>
 <body>
-  <h2>Karma League - Today's Games updated 2.2</h2>
+  <h2>Karma League - Today's Games updated 2.3</h2>
   <h5>Please wait a sec before switching games</h5>
 
   <div>
@@ -170,10 +170,18 @@
           </div>
           ${team2Data.lines.map(p => `<div class="roster-line">${p}</div>`).join('')}
           <div style="margin-top: 12px;">
-            <button id="refresh-btn" onclick="refreshScore()">Refresh Score</button>
+            <button id="refresh-btn" onclick="refreshScore()" disabled>Refresh Score</button>
           </div>
         </div>
       `;
+
+      // Disable refresh button for 5 seconds on new game load
+      const btn = document.getElementById('refresh-btn');
+      setTimeout(() => {
+        if (btn) {
+          btn.disabled = false;
+        }
+      }, 5000);
     }
 
     async function refreshScore() {
