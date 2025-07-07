@@ -1,1 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Karma League Scores</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+    button {
+      margin: 10px 0;
+      padding: 6px 10px;
+    }
+    .game-container {
+      border: 1px solid #ccc;
+      padding: 12px;
+      margin-bottom: 16px;
+      border-radius: 8px;
+    }
+    .team-row {
+      display: flex;
+      justify-content: space-between;
+      font-weight: bold;
+      margin-top: 6px;
+    }
+    .team-info {
+      margin-left: 10px;
+      font-weight: normal;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+<body>
+  <h2>Karma League - Today's Games</h2>
 
+  <div id="games-schedule">Loading games...</div>
+
+  <script>
+    const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
+
+    // Utility: parse CSV text into an array of objects
+    function parseCSV(text) {
+      const lines = text.trim().split('\n');
+      const headers = lines[0].split(',').map(h => h.trim());
+      return lines.slice(1).map(line => {
+        const parts = line.split(',').map(p => p.trim());
+        let obj = {};
+        headers.forEach((h, i) => {
+          obj[h] = parts[i];
+        });
+        return obj;
+      });
+    }
+
+    function getTodayString() {
+      const today = new Date();
+      const month = today.getMonth() + 1;
+      const day = today.getDate();
+      return `${month}/${day}`; // Format like 7/6
+    }
+
+    async function loadTodayGames() {
+      const container = document.getElementById('games-schedule');
+      container.innerText = 'Loading schedule...';
+
+      try {
+        const response = await axios.get(scheduleCsvUrl);
+        const games = parseCSV(response.data);
+
+        const today = getTodayString();
+        const todaysGames = games.filter(g => g['Date'] === today);
+
+        if (todaysGames.length === 0) {
+          container.innerText = 'No games scheduled for today.';
+          return;
+        }
+
+        container.innerHTML = '';
+
+        todaysGames.forEach(game => {
+          const gameDiv = document.createElement('div');
+          gameDiv.className = 'game-container';
+          gameDiv.innerHTML = `
+            <div class="team-row">
+              <div>${game['Team 1']} <span class="team-info">score will show here</span></div>
+            </div>
+            <div class="team-info">roster will show here</div>
+            <div class="team-row" style="margin-top: 10px;">
+              <div>${game['Team 2']} <span class="team-info">score will show here</span></div>
+            </div>
+            <div class="team-info">roster will show here</div>
+          `;
+          container.appendChild(gameDiv);
+        });
+
+      } catch (err) {
+        container.innerText = 'Error loading schedule.';
+        console.error(err);
+      }
+    }
+
+    loadTodayGames();
+  </script>
+</body>
+</html>
