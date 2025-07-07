@@ -29,7 +29,7 @@
   </style>
 </head>
 <body>
-  <h2>Karma League - Today's Matchups w/ delay</h2>
+  <h2>Karma League - Today's Matchups 2.0</h2>
   <button onclick="loadKarmaLeague()">Refresh League</button>
   <div id="games"></div>
 
@@ -50,17 +50,12 @@
       });
     }
 
-    function delay(ms) {
-      return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
     async function fetchKarma(userId) {
       const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
       const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
       try {
         const response = await axios.get(proxyUrl);
         const data = JSON.parse(response.data.contents);
-        console.log(`Fetched karma for ${userId}:`, data.stats.karmaDelta);
         return data.stats.karmaDelta || 0;
       } catch (e) {
         console.error(`Error fetching karma for ${userId}`, e);
@@ -82,8 +77,8 @@
         const rosters = parseCSV(rosterRes.data);
 
         const today = new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York' });
-        console.log('Today:', today);
 
+        // Filter today's games
         const todayGames = schedule.filter(g => g['Date'].trim() === today);
 
         if (todayGames.length === 0) {
@@ -136,7 +131,6 @@
     }
 
     async function loadTeamRoster(teamName, rosterData, container) {
-      console.log(`Loading roster for team: ${teamName}`);
       const players = rosterData.filter(player =>
         player['Team'].trim() === teamName &&
         player['playing?'].trim().toLowerCase() === 'yes' &&
@@ -151,8 +145,6 @@
         const userAt = player['User @'].trim();
         const role = (player['role'] || '').trim().toLowerCase();
         const deduction = parseInt(player['deductions'] || '0');
-
-        await delay(300); // rate-limiting: wait 300ms between calls
 
         const karma = await fetchKarma(userId);
         if (karma === null) {
