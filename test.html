@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RKL Live Scores v10</title>
+  <title>RKL Live Scores v9</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
     * {
@@ -429,10 +429,11 @@
     }
 
     async function fetchWithRetry(url, retries = 1, delayMs = 0) {
-      // No retries
+      // Retries removed as per instructions (only 1 attempt)
       return await axios.get(url);
     }
 
+    // Limited concurrency map with delay between batches
     async function limitedMap(array, concurrency, asyncFn, delayBetween = 0) {
       const results = [];
       for (let i = 0; i < array.length; i += concurrency) {
@@ -488,16 +489,36 @@
       const results = [];
       let teamScore = 0;
 
-      const processed = await limitedMap(players, 3, async (p) => {
-        return processPlayer(p);
-      }, 300);
+      // Split players into first 6 and last 6
+      const firstSix = players.slice(0, 6);
+      const lastSix = players.slice(6, 12);
 
-      processed.forEach(({ karma, deduction, role, userAt, adjusted, boosted }) => {
-        if (karma === null) return;
+      // Process first 6 with concurrency 6, no delay
+      const firstResults = await limitedMap(firstSix, 6, async (p) => {
+        return processPlayer(p);
+      });
+
+      // Wait 5 seconds after first 6
+      await delay(5000);
+
+      // Process last 6 with concurrency 3, 200ms delay between batches
+      const lastResults = await limitedMap(lastSix, 3, async (p) => {
+        return processPlayer(p);
+      }, 200);
+
+      const allResults = [...firstResults, ...lastResults];
+
+      // Sum team score from all processed players
+      allResults.forEach(({ karma, deduction, role, userAt, formatted }) => {
+        if (karma === null) return; // skip error cases
+        const adjusted = karma - deduction;
+        const isCaptain = role === 'captain';
+        const boosted = isCaptain ? adjusted * 1.5 : adjusted;
         teamScore += boosted;
       });
 
-      const lines = processed.map(({ formatted }) => formatted);
+      // Prepare lines for UI (in same order as allResults)
+      const lines = allResults.map(({ userAt, adjusted, boosted, isCaptain, formatted }) => formatted);
 
       return { lines, total: Math.round(teamScore) };
     }
