@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RKL Live Scores</title>
+  <title>RKL Live Scores 1.0</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
    * {
@@ -165,63 +165,6 @@
       font-weight: 300;
     }
     
-    .match-status {
-      text-align: center;
-    }
-    
-    .status-indicator {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      background-color: #e74c3c;
-      border-radius: 50%;
-      margin-right: 8px;
-    }
-    
-    .status-indicator.live {
-      background-color: #27ae60;
-    }
-    
-    .status-text {
-      font-size: 14px;
-      color: #888;
-      font-weight: 500;
-    }
-    
-    .match-events {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 20px 40px;
-      background-color: #333;
-      border-top: 1px solid #444;
-    }
-    
-    .event-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 14px;
-      color: #ccc;
-    }
-    
-    .event-icon {
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      background-color: #f39c12;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 10px;
-      color: #000;
-    }
-    
-    .event-icon.red-card {
-      background-color: #e74c3c;
-      color: #fff;
-    }
-    
     .team-details {
       padding: 24px;
     }
@@ -257,45 +200,18 @@
     
     .roster-list {
       display: grid;
-      gap: 8px;
+      gap: 4px;
+      /* reduce gap to tighten spacing */
     }
     
     .player-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 12px;
-      background-color: #333;
-      border-radius: 8px;
-      transition: background-color 0.2s;
-    }
-    
-    .player-row:hover {
-      background-color: #3a3a3a;
-    }
-    
-    .player-name {
       font-size: 14px;
       font-weight: 500;
       color: #ffffff;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    
-    .captain-badge {
-      background-color: #f39c12;
-      color: #000;
-      font-size: 10px;
-      font-weight: 700;
-      padding: 2px 6px;
-      border-radius: 4px;
-      text-transform: uppercase;
-    }
-    
-    .player-score {
-      font-size: 14px;
-      font-weight: 600;
+      padding: 6px 12px;
+      background-color: #333;
+      border-radius: 8px;
+      /* remove flex to simplify spacing */
     }
     
     .positive-score {
@@ -304,16 +220,6 @@
     
     .negative-score {
       color: #e74c3c;
-    }
-    
-    .neutral-score {
-      color: #95a5a6;
-    }
-    
-    .captain-boost {
-      color: #f39c12;
-      font-size: 12px;
-      margin-left: 4px;
     }
     
     .actions {
@@ -388,12 +294,6 @@
       .score {
         font-size: 36px;
       }
-      
-      .match-events {
-        flex-direction: column;
-        gap: 10px;
-        padding: 15px;
-      }
     }
   </style>
 </head>
@@ -417,8 +317,6 @@
     const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
     const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
 
-    const WORKER_URL = 'https://rkl-worker.tommyek600.workers.dev/';
-
     let todaysGames = [];
     let allPlayers = [];
     let lastSelectedIndex = null;
@@ -427,12 +325,12 @@
     // cache for karma 
     const karmaCache = new Map();
 
-    // Helper: delay promise (only used for fetch retries)
+    // Helper: delay promise
     function delay(ms) {
       return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    // Retry fetch with delay & retries
+    // Retry axios GET with delay & retries
     async function fetchWithRetry(url, retries = 3, delayMs = 1000) {
       for (let i = 0; i < retries; i++) {
         try {
@@ -444,91 +342,39 @@
       }
     }
 
-    // Simplified limited concurrency mapping function
+    // Limited concurrency helper: runs max N promises at once, returns results array
     async function limitedMap(array, limit, asyncFn) {
       const results = [];
-      const executing = new Set();
-
+      const executing = [];
       for (const item of array) {
         const p = asyncFn(item).then(res => results.push(res));
-        executing.add(p);
-
-        const cleanUp = () => executing.delete(p);
-        p.then(cleanUp).catch(cleanUp);
-
-        if (executing.size >= limit) {
-          // Wait for any one promise to complete before continuing
+        executing.push(p);
+        if (executing.length >= limit) {
           await Promise.race(executing);
+          // Remove settled promises from executing
+          for (let i = executing.length - 1; i >= 0; i--) {
+            if (executing[i].settled) executing.splice(i, 1);
+          }
         }
       }
-      // Wait for all remaining promises to complete
       await Promise.all(executing);
       return results;
     }
 
-    // Fetch karma via your Cloudflare Worker proxy
-    async function fetchKarma(userId) {
-      if (karmaCache.has(userId)) {
-        return karmaCache.get(userId);
+    // Patch Promise prototype to track settled (for cleanup)
+    (function patchPromiseSettledFlag() {
+      const origThen = Promise.prototype.then;
+      Promise.prototype.then = function(onFulfilled, onRejected) {
+        return origThen.call(this, val => {
+          this.settled = true;
+          return onFulfilled ? onFulfilled(val) : val;
+        }, err => {
+          this.settled = true;
+          if(onRejected) return onRejected(err);
+          throw err;
+        });
       }
-
-      try {
-        const response = await fetch(`${WORKER_URL}?userId=${encodeURIComponent(userId)}`);
-        if (!response.ok) throw new Error(`Worker responded with status ${response.status}`);
-
-        const data = await response.json();
-        const delta = data?.stats?.karmaDelta;
-        const val = typeof delta === 'number' ? delta : Number(delta) || 0;
-
-        karmaCache.set(userId, val);
-        return val;
-      } catch (e) {
-        console.error(`Error fetching karma for ${userId}:`, e);
-        return null;
-      }
-    }
-
-    async function processRoster(players) {
-      const results = [];
-      let teamScore = 0;
-
-      // Concurrency-limited processing with limit 5
-      await limitedMap(players, 5, async (p) => {
-        const userId = p['User ID']?.trim();
-        const userAt = p['User @']?.trim() || 'Unknown';
-
-        if (!userId || userId.toLowerCase() === 'not found') {
-          results.push(`${userAt}: missing user ID`);
-          return;
-        }
-
-        const karma = await fetchKarma(userId);
-        if (karma === null) {
-          results.push(`${userAt}: error fetching`);
-          return;
-        }
-
-        const deduction = parseFloat(p['deductions'] || 0);
-        const adjusted = karma - deduction;
-        const role = (p['role'] || '').trim().toLowerCase();
-        const isCaptain = role === 'captain';
-        const boosted = isCaptain ? adjusted * 1.5 : adjusted;
-
-        teamScore += boosted;
-
-        const adjRounded = Math.round(adjusted);
-        const boostRounded = Math.round(boosted);
-        const label = `${userAt}${isCaptain ? ' (c)' : ''}`;
-
-        const formatted = isCaptain
-          ? `${label}: <span class="${adjRounded < 0 ? 'negative' : ''}">${adjRounded}</span> → <span class="${boostRounded < 0 ? 'negative' : ''}">${boostRounded}</span>`
-          : `${label}: <span class="${adjRounded < 0 ? 'negative' : ''}">${adjRounded}</span>`;
-
-        results.push(formatted);
-      });
-
-      return { lines: results, total: Math.round(teamScore) };
-    }
+    })();
 
     function parseCSV(text) {
       const lines = text.trim().split('\n');
@@ -557,6 +403,65 @@
       return `${month}/${day}`;
     }
 
+    async function fetchKarma(userId) {
+      if (karmaCache.has(userId)) {
+        return karmaCache.get(userId);
+      }
+      const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
+      const proxyUrl = `https://YOUR_WORKER_SUBDOMAIN.workers.dev/?url=${encodeURIComponent(apiUrl)}&cache_bust=${Date.now()}`;
+
+      try {
+        const response = await fetchWithRetry(proxyUrl);
+        const data = JSON.parse(response.data.contents);
+        const delta = data?.stats?.karmaDelta;
+        const val = typeof delta === 'number' ? delta : Number(delta) || 0;
+        karmaCache.set(userId, val);
+        return val;
+      } catch (e) {
+        console.error(`Error fetching karma for ${userId}:`, e);
+        return null;
+      }
+    }
+
+    async function processRoster(players) {
+      let teamScore = 0;
+      const results = [];
+
+      // Concurrency-limited processing (max 5 fetches at once, no delay)
+      await limitedMap(players, 5, async (p) => {
+        const userId = p['User ID']?.trim();
+        const userAt = p['User @']?.trim() || 'Unknown';
+
+        if (!userId || userId.toLowerCase() === 'not found') {
+          results.push(`${userAt}: missing user ID`);
+          return;
+        }
+
+        const karma = await fetchKarma(userId);
+        if (karma === null) {
+          results.push(`${userAt}: error fetching`);
+          return;
+        }
+
+        const deduction = parseFloat(p['deductions'] || 0);
+        const adjusted = karma - deduction;
+        const role = (p['role'] || '').trim().toLowerCase();
+        const isCaptain = role === 'captain';
+        const boosted = isCaptain ? adjusted * 1.5 : adjusted;
+
+        teamScore += boosted;
+
+        // Format like: "user: 20" or "user (c): 20 -> 30"
+        if (isCaptain) {
+          results.push(`${userAt} (c): ${Math.round(adjusted)} → ${Math.round(boosted)}`);
+        } else {
+          results.push(`${userAt}: ${Math.round(adjusted)}`);
+        }
+      });
+
+      return { lines: results, total: Math.round(teamScore) };
+    }
+
     async function loadSelectedGame(forcedIndex = null) {
       const select = document.getElementById('game-select');
       const selectedIndex = forcedIndex !== null ? forcedIndex : select.selectedIndex;
@@ -580,47 +485,25 @@
       const team1Data = await processRoster(team1Players);
       const team2Data = await processRoster(team2Players);
 
-      // Generate random events for demo
-      const events = [
-        { type: 'goal', player: 'Rothrock', time: '43' },
-        { type: 'goal', player: 'Rossi', time: '27' },
-        { type: 'red-card', player: 'Rienzi', time: '90+2' }
-      ];
-
       output.innerHTML = `
         <div class="game-container">
           <div class="scoreboard-header">
             <div class="team-section">
-              <div class="team-name">${team1}</div>
               <div class="team-logo">${team1.charAt(0)}</div>
+              <div class="team-name">${team1}</div>
             </div>
-            
+
             <div class="score-section">
               <div class="score-display">
                 <div class="score">${team1Data.total}</div>
                 <div class="score-separator">-</div>
                 <div class="score">${team2Data.total}</div>
               </div>
-              <div class="match-status">
-                <span class="status-indicator live"></span>
-                <span class="status-text">LIVE</span>
-              </div>
             </div>
-            
+
             <div class="team-section away">
               <div class="team-logo away">${team2.charAt(0)}</div>
               <div class="team-name">${team2}</div>
-            </div>
-          </div>
-
-          <div class="match-events">
-            <div class="event-item">
-              <div class="event-icon">⚽</div>
-              <div>Goals: ${events.filter(e => e.type === 'goal').length}</div>
-            </div>
-            <div class="event-item">
-              <div class="event-icon red-card">🟥</div>
-              <div>Red Cards: ${events.filter(e => e.type === 'red-card').length}</div>
             </div>
           </div>
 
@@ -659,8 +542,11 @@
 
       karmaCache.clear();
 
-      document.getElementById('refresh-btn').disabled = true;
-      document.getElementById('refresh-btn').textContent = 'Refreshing...';
+      const btn = document.getElementById('refresh-btn');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Refreshing...';
+      }
 
       if (lastSelectedIndex !== null) {
         await loadSelectedGame(lastSelectedIndex);
@@ -668,29 +554,55 @@
 
       setTimeout(() => {
         refreshCooldown = false;
-        document.getElementById('refresh-btn').disabled = false;
-        document.getElementById('refresh-btn').textContent = 'Refresh Karma';
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Refresh Karma';
+        }
       }, 5000);
     }
 
     async function init() {
-      try {
-        const scheduleResp = await fetchWithRetry(scheduleCsvUrl);
-        const rosterResp = await fetchWithRetry(rosterCsvUrl);
+      const select = document.getElementById('game-select');
+      const output = document.getElementById('game-output');
+      select.innerHTML = '<option>Loading schedule...</option>';
 
-        todaysGames = parseCSV(scheduleResp.data);
+      try {
+        const [scheduleResp, rosterResp] = await Promise.all([
+          axios.get(scheduleCsvUrl),
+          axios.get(rosterCsvUrl)
+        ]);
+
+        const schedule = parseCSV(scheduleResp.data);
         allPlayers = parseCSV(rosterResp.data);
 
-        const select = document.getElementById('game-select');
-        select.innerHTML = todaysGames.map((g, i) => {
-          return `<option value="${i}">${g['Team 1']} vs ${g['Team 2']}</option>`;
-        }).join('');
+        // Filter schedule to only today's games (by date "M/D" format, assuming schedule has 'Date' field)
+        const todayStr = getTodayString();
 
-        // auto-load first game after a short delay
-        setTimeout(() => loadSelectedGame(0), 3000);
+        todaysGames = schedule.filter(g => g.Date.trim() === todayStr);
+
+        if (todaysGames.length === 0) {
+          select.innerHTML = '<option>No games scheduled for today</option>';
+          output.innerHTML = '<div class="loading">No games scheduled for today.</div>';
+          return;
+        }
+
+        select.innerHTML = '';
+        todaysGames.forEach((game, i) => {
+          // Show teams as "Team 1 vs Team 2 - time"
+          const optionText = `${game['Team 1']} vs ${game['Team 2']} - ${game.Time}`;
+          const opt = document.createElement('option');
+          opt.value = i;
+          opt.textContent = optionText;
+          select.appendChild(opt);
+        });
+
+        // Auto-load first game
+        loadSelectedGame(0);
+
       } catch (e) {
-        document.getElementById('game-output').innerHTML = `<div class="error">Failed to load schedule or roster data.</div>`;
-        console.error('Init error:', e);
+        console.error(e);
+        select.innerHTML = '<option>Error loading schedule</option>';
+        output.innerHTML = '<div class="error">Error loading schedule or roster data.</div>';
       }
     }
 
