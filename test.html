@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RKL Live Scores v9</title>
+  <title>RKL Live Scores v8</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
     * {
@@ -428,23 +428,121 @@
       return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    async function fetchWithRetry(url, retries = 1, delayMs = 0) {
-      // Retries removed as per instructions (only 1 attempt)
-      return await axios.get(url);
+    async function fetchNoRetry(url) {
+      try {
+        return await axios.get(url);
+      } catch (e) {
+        throw e;
+      }
     }
 
-    // Limited concurrency map with delay between batches
-    async function limitedMap(array, concurrency, asyncFn, delayBetween = 0) {
+    async function limitedConcurrency(array, concurrency, delayBetweenBatches = 0, asyncFn) {
       const results = [];
       for (let i = 0; i < array.length; i += concurrency) {
         const batch = array.slice(i, i + concurrency);
-        const batchResults = await Promise.all(batch.map(item => asyncFn(item)));
+        const batchResults = await Promise.all(batch.map(asyncFn));
         results.push(...batchResults);
-        if (delayBetween > 0 && i + concurrency < array.length) {
-          await delay(delayBetween);
+        if (delayBetweenBatches > 0 && i + concurrency < array.length) {
+          await delay(delayBetweenBatches);
         }
       }
       return results;
+    }
+
+    async function processRoster(players) {
+      const results = [];
+      let teamScore = 0;
+
+      // First 6 with concurrency 6, no delay between them
+      const firstSix = players.slice(0, 6);
+      const firstSixResults = await limitedConcurrency(
+        firstSix,
+        6,
+        0,
+        async (p) => {
+          return await processPlayer(p);
+        }
+      );
+
+      // 5 second delay after first 6
+      await delay(5000);
+
+      // Last 6 with concurrency 2, 200ms delay between batches
+      const lastSix = players.slice(6, 12);
+      const lastSixResults = await limitedConcurrency(
+        lastSix,
+        2,
+        200,
+        async (p) => {
+          return await processPlayer(p);
+        }
+      );
+
+      // Combine all player results
+      const allResults = [...firstSixResults, ...lastSixResults];
+
+      // Calculate total score from all results
+      allResults.forEach(r => {
+        if (r && typeof r.boosted === 'number') {
+          teamScore += r.boosted;
+          results.push(r.formatted);
+        } else if (r && r.errorMsg) {
+          results.push(r.errorMsg);
+        }
+      });
+
+      return { lines: results, total: Math.round(teamScore) };
+    }
+
+    async function processPlayer(p) {
+      const userId = p['User ID']?.trim();
+      const userAt = p['User @']?.trim() || 'Unknown';
+
+      if (!userId || userId.toLowerCase() === 'not found') {
+        return { errorMsg: `${userAt}: missing user ID` };
+      }
+
+      try {
+        const karma = await fetchKarma(userId);
+        if (karma === null) {
+          return { errorMsg: `${userAt}: error fetching` };
+        }
+
+        const deduction = parseFloat(p['deductions'] || 0);
+        const adjusted = karma - deduction;
+        const role = (p['role'] || '').trim().toLowerCase();
+        const isCaptain = role === 'captain';
+        const boosted = isCaptain ? adjusted * 1.5 : adjusted;
+
+        const adjRounded = Math.round(adjusted);
+        const boostRounded = Math.round(boosted);
+        const label = `${userAt}${isCaptain ? ' (c)' : ''}`;
+
+        const formatted = isCaptain
+          ? `${label}: <span class="${adjRounded < 0 ? 'negative' : ''}">${adjRounded}</span> → <span class="${boostRounded < 0 ? 'negative' : ''}">${boostRounded}</span>`
+          : `${label}: <span class="${adjRounded < 0 ? 'negative' : ''}">${adjRounded}</span>`;
+
+        return { boosted, formatted };
+      } catch (e) {
+        return { errorMsg: `${userAt}: error fetching` };
+      }
+    }
+
+    async function fetchKarma(userId) {
+      if (karmaCache.has(userId)) return karmaCache.get(userId);
+      const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}&cache_bust=${Date.now()}`;
+      try {
+        const response = await fetchNoRetry(proxyUrl);
+        const data = JSON.parse(response.data.contents);
+        const delta = data?.stats?.karmaDelta;
+        const val = typeof delta === 'number' ? delta : Number(delta) || 0;
+        karmaCache.set(userId, val);
+        return val;
+      } catch (e) {
+        console.error(`Error fetching karma for ${userId}:`, e);
+        return null;
+      }
     }
 
     function parseCSV(text) {
@@ -466,91 +564,6 @@
       const estHour = estTime.getHours();
       if (estHour < 7) estTime.setDate(estTime.getDate() - 1);
       return `${estTime.getMonth() + 1}/${estTime.getDate()}`;
-    }
-
-    async function fetchKarma(userId) {
-      if (karmaCache.has(userId)) return karmaCache.get(userId);
-      const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}&cache_bust=${Date.now()}`;
-      try {
-        const response = await fetchWithRetry(proxyUrl);
-        const data = JSON.parse(response.data.contents);
-        const delta = data?.stats?.karmaDelta;
-        const val = typeof delta === 'number' ? delta : Number(delta) || 0;
-        karmaCache.set(userId, val);
-        return val;
-      } catch (e) {
-        console.error(`Error fetching karma for ${userId}:`, e);
-        return null;
-      }
-    }
-
-    async function processRoster(players) {
-      const results = [];
-      let teamScore = 0;
-
-      // Split players into first 6 and last 6
-      const firstSix = players.slice(0, 6);
-      const lastSix = players.slice(6, 12);
-
-      // Process first 6 with concurrency 6, no delay
-      const firstResults = await limitedMap(firstSix, 6, async (p) => {
-        return processPlayer(p);
-      });
-
-      // Wait 5 seconds after first 6
-      await delay(5000);
-
-      // Process last 6 with concurrency 3, 200ms delay between batches
-      const lastResults = await limitedMap(lastSix, 3, async (p) => {
-        return processPlayer(p);
-      }, 200);
-
-      const allResults = [...firstResults, ...lastResults];
-
-      // Sum team score from all processed players
-      allResults.forEach(({ karma, deduction, role, userAt, formatted }) => {
-        if (karma === null) return; // skip error cases
-        const adjusted = karma - deduction;
-        const isCaptain = role === 'captain';
-        const boosted = isCaptain ? adjusted * 1.5 : adjusted;
-        teamScore += boosted;
-      });
-
-      // Prepare lines for UI (in same order as allResults)
-      const lines = allResults.map(({ userAt, adjusted, boosted, isCaptain, formatted }) => formatted);
-
-      return { lines, total: Math.round(teamScore) };
-    }
-
-    async function processPlayer(p) {
-      const userId = p['User ID']?.trim();
-      const userAt = p['User @']?.trim() || 'Unknown';
-
-      if (!userId || userId.toLowerCase() === 'not found') {
-        return { userAt: userAt, karma: null, deduction: 0, role: '', formatted: `${userAt}: missing user ID` };
-      }
-
-      const karma = await fetchKarma(userId);
-      if (karma === null) {
-        return { userAt: userAt, karma: null, deduction: 0, role: '', formatted: `${userAt}: error fetching` };
-      }
-
-      const deduction = parseFloat(p['deductions'] || 0);
-      const adjusted = karma - deduction;
-      const role = (p['role'] || '').trim().toLowerCase();
-      const isCaptain = role === 'captain';
-      const boosted = isCaptain ? adjusted * 1.5 : adjusted;
-
-      const adjRounded = Math.round(adjusted);
-      const boostRounded = Math.round(boosted);
-      const label = `${userAt}${isCaptain ? ' (c)' : ''}`;
-
-      const formatted = isCaptain
-        ? `${label}: <span class="${adjRounded < 0 ? 'negative' : ''}">${adjRounded}</span> → <span class="${boostRounded < 0 ? 'negative' : ''}">${boostRounded}</span>`
-        : `${label}: <span class="${adjRounded < 0 ? 'negative' : ''}">${adjRounded}</span>`;
-
-      return { userAt, karma, deduction, role, adjusted, boosted, isCaptain, formatted };
     }
 
     async function loadSelectedGame(forcedIndex = null) {
