@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RKL Live Scores v4</title>
+  <title>RKL Live Scores</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
-   * {
+    * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
@@ -439,12 +439,17 @@
       }
     }
 
-    async function limitedMap(array, limit, asyncFn, delayBetween = 0) {
+    // New helper for concurrency of 3 with delayBetween start of batches
+    async function limitedConcurrencyProcess(items, concurrency, processFn, delayBetweenBatches = 0) {
       const results = [];
-      for (const item of array) {
-        const res = await asyncFn(item);
-        results.push(res);
-        if (delayBetween > 0) await delay(delayBetween);
+      for (let i = 0; i < items.length; i += concurrency) {
+        const batch = items.slice(i, i + concurrency);
+        const batchPromises = batch.map(item => processFn(item));
+        const batchResults = await Promise.all(batchPromises);
+        results.push(...batchResults);
+        if (delayBetweenBatches > 0 && i + concurrency < items.length) {
+          await delay(delayBetweenBatches);
+        }
       }
       return results;
     }
@@ -491,7 +496,6 @@
       const results = [];
       let teamScore = 0;
 
-      // Helper to process single player
       async function processPlayer(p) {
         const userId = p['User ID']?.trim();
         const userAt = p['User @']?.trim() || 'Unknown';
@@ -526,14 +530,14 @@
         results.push(formatted);
       }
 
-      // Process first 6 players with 200ms delay
-      await limitedMap(players.slice(0, 6), 1, processPlayer, 200);
+      // First 6 players: concurrency 3, 200ms delay between batches
+      await limitedConcurrencyProcess(players.slice(0, 6), 3, processPlayer, 200);
 
-      // Wait 1000ms before next batch
+      // Wait 1000ms before second batch
       await delay(1000);
 
-      // Process last 6 players with 200ms delay
-      await limitedMap(players.slice(6, 12), 1, processPlayer, 200);
+      // Last 6 players: concurrency 3, 200ms delay between batches
+      await limitedConcurrencyProcess(players.slice(6, 12), 3, processPlayer, 200);
 
       return { lines: results, total: Math.round(teamScore) };
     }
