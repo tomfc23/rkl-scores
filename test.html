@@ -434,7 +434,7 @@
           return await axios.get(url);
         } catch (e) {
           if (i === retries - 1) throw e;
-          await delay(delayMs);
+          await delay(delayMs * (i + 1));
         }
       }
     }
@@ -492,25 +492,16 @@
 
     function getTodayString() {
       const now = new Date();
-      const estTime = new Date(
-        now.toLocaleString("en-US", { timeZone: "America/New_York" })
-      );
+      const estTime = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
       const estHour = estTime.getHours();
-      if (estHour < 7) {
-        estTime.setDate(estTime.getDate() - 1);
-      }
-      const month = estTime.getMonth() + 1;
-      const day = estTime.getDate();
-      return `${month}/${day}`;
+      if (estHour < 7) estTime.setDate(estTime.getDate() - 1);
+      return `${estTime.getMonth() + 1}/${estTime.getDate()}`;
     }
 
     async function fetchKarma(userId) {
-      if (karmaCache.has(userId)) {
-        return karmaCache.get(userId);
-      }
+      if (karmaCache.has(userId)) return karmaCache.get(userId);
       const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
       const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}&cache_bust=${Date.now()}`;
-
       try {
         const response = await fetchWithRetry(proxyUrl);
         const data = JSON.parse(response.data.contents);
@@ -560,7 +551,7 @@
           : `${label}: <span class="${adjRounded < 0 ? 'negative' : ''}">${adjRounded}</span>`;
 
         results.push(formatted);
-      }, 500);
+      }, 250);
 
       return { lines: results, total: Math.round(teamScore) };
     }
@@ -578,12 +569,8 @@
       const team1 = game['Team 1'];
       const team2 = game['Team 2'];
 
-      const team1Players = allPlayers.filter(p =>
-        p.Team === team1 && p['playing?']?.toLowerCase() === 'yes'
-      );
-      const team2Players = allPlayers.filter(p =>
-        p.Team === team2 && p['playing?']?.toLowerCase() === 'yes'
-      );
+      const team1Players = allPlayers.filter(p => p.Team === team1 && p['playing?']?.toLowerCase() === 'yes');
+      const team2Players = allPlayers.filter(p => p.Team === team2 && p['playing?']?.toLowerCase() === 'yes');
 
       const team1Data = await processRoster(team1Players);
       const team2Data = await processRoster(team2Players);
@@ -595,7 +582,6 @@
               <div class="team-name">${team1}</div>
               <div class="team-logo">${team1.charAt(0)}</div>
             </div>
-
             <div class="score-section">
               <div class="score-display">
                 <div class="score">${team1Data.total}</div>
@@ -603,13 +589,11 @@
                 <div class="score">${team2Data.total}</div>
               </div>
             </div>
-
             <div class="team-section away">
               <div class="team-name">${team2}</div>
               <div class="team-logo away">${team2.charAt(0)}</div>
             </div>
           </div>
-
           <div class="team-details">
             <div class="team-roster">
               <div class="roster-header">
@@ -620,7 +604,6 @@
                 ${team1Data.lines.map(p => `<div class="player-row"><div class="player-name">${p}</div></div>`).join('')}
               </div>
             </div>
-
             <div class="team-roster">
               <div class="roster-header">
                 <div class="roster-team-name">${team2}</div>
@@ -631,7 +614,6 @@
               </div>
             </div>
           </div>
-
           <div class="actions">
             <button id="refresh-btn" class="refresh-btn" onclick="refreshScore()" disabled>Refresh Score</button>
           </div>
@@ -640,24 +622,19 @@
 
       const btn = document.getElementById('refresh-btn');
       setTimeout(() => {
-        if (btn) {
-          btn.disabled = false;
-        }
+        if (btn) btn.disabled = false;
       }, 5000);
     }
 
     async function refreshScore() {
       if (refreshCooldown || lastSelectedIndex === null) return;
-
       refreshCooldown = true;
       const btn = document.getElementById('refresh-btn');
       if (btn) {
         btn.disabled = true;
         btn.innerText = "Refreshing...";
       }
-
       await loadSelectedGame(lastSelectedIndex);
-
       setTimeout(() => {
         refreshCooldown = false;
         if (btn) {
@@ -671,24 +648,20 @@
       const select = document.getElementById('game-select');
       const output = document.getElementById('game-output');
       select.innerHTML = '<option>Loading schedule...</option>';
-
       try {
         const [scheduleResp, rosterResp] = await Promise.all([
           axios.get(scheduleCsvUrl),
           axios.get(rosterCsvUrl)
         ]);
-
         const allGames = parseCSV(scheduleResp.data);
         allPlayers = parseCSV(rosterResp.data);
         const today = getTodayString();
-
         todaysGames = allGames.filter(g => g['Date'] === today);
         if (todaysGames.length === 0) {
           select.innerHTML = '<option>No games today</option>';
           output.innerHTML = '';
           return;
         }
-
         select.innerHTML = '';
         todaysGames.forEach(game => {
           const option = document.createElement('option');
