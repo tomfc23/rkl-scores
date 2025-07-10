@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RKL Live Scores v8</title>
+  <title>RKL Live Scores</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
-    * {
+  * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
@@ -422,128 +422,56 @@
     let lastSelectedIndex = null;
     let refreshCooldown = false;
 
+    // cache for karma 
     const karmaCache = new Map();
 
+    // Helper: delay promise
     function delay(ms) {
       return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    async function fetchNoRetry(url) {
+    // ** Simplified fetch with NO retries **
+    async function fetchOnce(url) {
       try {
         return await axios.get(url);
       } catch (e) {
-        throw e;
+        throw e;  // just throw error immediately, no retry
       }
     }
 
-    async function limitedConcurrency(array, concurrency, delayBetweenBatches = 0, asyncFn) {
+    // Limited concurrency helper: runs max N promises at once, returns results array
+    async function limitedMap(array, limit, asyncFn) {
       const results = [];
-      for (let i = 0; i < array.length; i += concurrency) {
-        const batch = array.slice(i, i + concurrency);
-        const batchResults = await Promise.all(batch.map(asyncFn));
-        results.push(...batchResults);
-        if (delayBetweenBatches > 0 && i + concurrency < array.length) {
-          await delay(delayBetweenBatches);
+      const executing = [];
+      for (const item of array) {
+        const p = asyncFn(item).then(res => results.push(res));
+        executing.push(p);
+        if (executing.length >= limit) {
+          await Promise.race(executing);
+          // Remove settled promises from executing
+          for (let i = executing.length - 1; i >= 0; i--) {
+            if (executing[i].settled) executing.splice(i, 1);
+          }
         }
       }
+      await Promise.all(executing);
       return results;
     }
 
-    async function processRoster(players) {
-      const results = [];
-      let teamScore = 0;
-
-      // First 6 with concurrency 6, no delay between them
-      const firstSix = players.slice(0, 6);
-      const firstSixResults = await limitedConcurrency(
-        firstSix,
-        6,
-        0,
-        async (p) => {
-          return await processPlayer(p);
-        }
-      );
-
-      // 5 second delay after first 6
-      await delay(5000);
-
-      // Last 6 with concurrency 2, 200ms delay between batches
-      const lastSix = players.slice(6, 12);
-      const lastSixResults = await limitedConcurrency(
-        lastSix,
-        2,
-        200,
-        async (p) => {
-          return await processPlayer(p);
-        }
-      );
-
-      // Combine all player results
-      const allResults = [...firstSixResults, ...lastSixResults];
-
-      // Calculate total score from all results
-      allResults.forEach(r => {
-        if (r && typeof r.boosted === 'number') {
-          teamScore += r.boosted;
-          results.push(r.formatted);
-        } else if (r && r.errorMsg) {
-          results.push(r.errorMsg);
-        }
-      });
-
-      return { lines: results, total: Math.round(teamScore) };
-    }
-
-    async function processPlayer(p) {
-      const userId = p['User ID']?.trim();
-      const userAt = p['User @']?.trim() || 'Unknown';
-
-      if (!userId || userId.toLowerCase() === 'not found') {
-        return { errorMsg: `${userAt}: missing user ID` };
+    // Patch Promise prototype to track settled (for cleanup)
+    (function patchPromiseSettledFlag() {
+      const origThen = Promise.prototype.then;
+      Promise.prototype.then = function(onFulfilled, onRejected) {
+        return origThen.call(this, val => {
+          this.settled = true;
+          return onFulfilled ? onFulfilled(val) : val;
+        }, err => {
+          this.settled = true;
+          if(onRejected) return onRejected(err);
+          throw err;
+        });
       }
-
-      try {
-        const karma = await fetchKarma(userId);
-        if (karma === null) {
-          return { errorMsg: `${userAt}: error fetching` };
-        }
-
-        const deduction = parseFloat(p['deductions'] || 0);
-        const adjusted = karma - deduction;
-        const role = (p['role'] || '').trim().toLowerCase();
-        const isCaptain = role === 'captain';
-        const boosted = isCaptain ? adjusted * 1.5 : adjusted;
-
-        const adjRounded = Math.round(adjusted);
-        const boostRounded = Math.round(boosted);
-        const label = `${userAt}${isCaptain ? ' (c)' : ''}`;
-
-        const formatted = isCaptain
-          ? `${label}: <span class="${adjRounded < 0 ? 'negative' : ''}">${adjRounded}</span> → <span class="${boostRounded < 0 ? 'negative' : ''}">${boostRounded}</span>`
-          : `${label}: <span class="${adjRounded < 0 ? 'negative' : ''}">${adjRounded}</span>`;
-
-        return { boosted, formatted };
-      } catch (e) {
-        return { errorMsg: `${userAt}: error fetching` };
-      }
-    }
-
-    async function fetchKarma(userId) {
-      if (karmaCache.has(userId)) return karmaCache.get(userId);
-      const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}&cache_bust=${Date.now()}`;
-      try {
-        const response = await fetchNoRetry(proxyUrl);
-        const data = JSON.parse(response.data.contents);
-        const delta = data?.stats?.karmaDelta;
-        const val = typeof delta === 'number' ? delta : Number(delta) || 0;
-        karmaCache.set(userId, val);
-        return val;
-      } catch (e) {
-        console.error(`Error fetching karma for ${userId}:`, e);
-        return null;
-      }
-    }
+    })();
 
     function parseCSV(text) {
       const lines = text.trim().split('\n');
@@ -560,10 +488,78 @@
 
     function getTodayString() {
       const now = new Date();
-      const estTime = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+      const estTime = new Date(
+        now.toLocaleString("en-US", { timeZone: "America/New_York" })
+      );
       const estHour = estTime.getHours();
-      if (estHour < 7) estTime.setDate(estTime.getDate() - 1);
-      return `${estTime.getMonth() + 1}/${estTime.getDate()}`;
+      if (estHour < 7) {
+        estTime.setDate(estTime.getDate() - 1);
+      }
+      const month = estTime.getMonth() + 1;
+      const day = estTime.getDate();
+      return `${month}/${day}`;
+    }
+
+    async function fetchKarma(userId) {
+      if (karmaCache.has(userId)) {
+        return karmaCache.get(userId);
+      }
+      const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}&cache_bust=${Date.now()}`;
+
+      try {
+        const response = await fetchOnce(proxyUrl);
+        const data = JSON.parse(response.data.contents);
+        const delta = data?.stats?.karmaDelta;
+        const val = typeof delta === 'number' ? delta : Number(delta) || 0;
+        karmaCache.set(userId, val);
+        return val;
+      } catch (e) {
+        console.error(`Error fetching karma for ${userId}:`, e);
+        return null;
+      }
+    }
+
+    async function processRoster(players) {
+      const results = [];
+      let teamScore = 0;
+
+      // Concurrency-limited processing (max 3 fetches at once)
+      await limitedMap(players, 3, async (p) => {
+        const userId = p['User ID']?.trim();
+        const userAt = p['User @']?.trim() || 'Unknown';
+
+        if (!userId || userId.toLowerCase() === 'not found') {
+          results.push(`${userAt}: missing user ID`);
+          return;
+        }
+
+        const karma = await fetchKarma(userId);
+        if (karma === null) {
+          results.push(`${userAt}: error fetching`);
+          return;
+        }
+
+        const deduction = parseFloat(p['deductions'] || 0);
+        const adjusted = karma - deduction;
+        const role = (p['role'] || '').trim().toLowerCase();
+        const isCaptain = role === 'captain';
+        const boosted = isCaptain ? adjusted * 1.5 : adjusted;
+
+        teamScore += boosted;
+
+        const adjRounded = Math.round(adjusted);
+        const boostRounded = Math.round(boosted);
+        const label = `${userAt}${isCaptain ? ' (c)' : ''}`;
+
+        const formatted = isCaptain
+          ? `${label}: <span class="${adjRounded < 0 ? 'negative' : ''}">${adjRounded}</span> → <span class="${boostRounded < 0 ? 'negative' : ''}">${boostRounded}</span>`
+          : `${label}: <span class="${adjRounded < 0 ? 'negative' : ''}">${adjRounded}</span>`;
+
+        results.push(formatted);
+      });
+
+      return { lines: results, total: Math.round(teamScore) };
     }
 
     async function loadSelectedGame(forcedIndex = null) {
@@ -579,11 +575,22 @@
       const team1 = game['Team 1'];
       const team2 = game['Team 2'];
 
-      const team1Players = allPlayers.filter(p => p.Team === team1 && p['playing?']?.toLowerCase() === 'yes');
-      const team2Players = allPlayers.filter(p => p.Team === team2 && p['playing?']?.toLowerCase() === 'yes');
+      const team1Players = allPlayers.filter(p =>
+        p.Team === team1 && p['playing?']?.toLowerCase() === 'yes'
+      );
+      const team2Players = allPlayers.filter(p =>
+        p.Team === team2 && p['playing?']?.toLowerCase() === 'yes'
+      );
 
       const team1Data = await processRoster(team1Players);
       const team2Data = await processRoster(team2Players);
+
+      // Generate random events for demo
+      const events = [
+        { type: 'goal', player: 'Rothrock', time: '43' },
+        { type: 'goal', player: 'Rossi', time: '27' },
+        { type: 'red-card', player: 'Rienzi', time: '90+2' }
+      ];
 
       output.innerHTML = `
         <div class="game-container">
@@ -592,6 +599,7 @@
               <div class="team-name">${team1}</div>
               <div class="team-logo">${team1.charAt(0)}</div>
             </div>
+            
             <div class="score-section">
               <div class="score-display">
                 <div class="score">${team1Data.total}</div>
@@ -599,11 +607,13 @@
                 <div class="score">${team2Data.total}</div>
               </div>
             </div>
+            
             <div class="team-section away">
               <div class="team-name">${team2}</div>
               <div class="team-logo away">${team2.charAt(0)}</div>
             </div>
           </div>
+          
           <div class="team-details">
             <div class="team-roster">
               <div class="roster-header">
@@ -614,6 +624,7 @@
                 ${team1Data.lines.map(p => `<div class="player-row"><div class="player-name">${p}</div></div>`).join('')}
               </div>
             </div>
+            
             <div class="team-roster">
               <div class="roster-header">
                 <div class="roster-team-name">${team2}</div>
@@ -624,27 +635,34 @@
               </div>
             </div>
           </div>
+          
           <div class="actions">
             <button id="refresh-btn" class="refresh-btn" onclick="refreshScore()" disabled>Refresh Score</button>
           </div>
         </div>
       `;
 
+      // Disable refresh button for 5 seconds on new game load
       const btn = document.getElementById('refresh-btn');
       setTimeout(() => {
-        if (btn) btn.disabled = false;
+        if (btn) {
+          btn.disabled = false;
+        }
       }, 5000);
     }
 
     async function refreshScore() {
       if (refreshCooldown || lastSelectedIndex === null) return;
+
       refreshCooldown = true;
       const btn = document.getElementById('refresh-btn');
       if (btn) {
         btn.disabled = true;
         btn.innerText = "Refreshing...";
       }
+
       await loadSelectedGame(lastSelectedIndex);
+
       setTimeout(() => {
         refreshCooldown = false;
         if (btn) {
@@ -658,26 +676,31 @@
       const select = document.getElementById('game-select');
       const output = document.getElementById('game-output');
       select.innerHTML = '<option>Loading schedule...</option>';
+
       try {
         const [scheduleResp, rosterResp] = await Promise.all([
           axios.get(scheduleCsvUrl),
           axios.get(rosterCsvUrl)
         ]);
+
         const allGames = parseCSV(scheduleResp.data);
         allPlayers = parseCSV(rosterResp.data);
         const today = getTodayString();
+
         todaysGames = allGames.filter(g => g['Date'] === today);
         if (todaysGames.length === 0) {
           select.innerHTML = '<option>No games today</option>';
           output.innerHTML = '';
           return;
         }
+
         select.innerHTML = '';
         todaysGames.forEach(game => {
           const option = document.createElement('option');
           option.text = `${game['Team 1']} vs ${game['Team 2']}`;
           select.add(option);
         });
+
       } catch (err) {
         output.innerHTML = '<div class="error">Error loading schedule or roster.</div>';
         console.error('Load error:', err);
