@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RKL Live Scores test v2</title>
+  <title>RKL Live Scores</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
     * {
@@ -441,41 +441,13 @@
 
     async function limitedMap(array, limit, asyncFn, delayBetween = 0) {
       const results = [];
-      const executing = [];
-
       for (const item of array) {
-        const p = asyncFn(item).then(res => results.push(res));
-        executing.push(p);
-
-        if (executing.length >= limit) {
-          await Promise.race(executing);
-          for (let i = executing.length - 1; i >= 0; i--) {
-            if (executing[i].settled) executing.splice(i, 1);
-          }
-        }
-
-        if (delayBetween > 0) {
-          await delay(delayBetween);
-        }
+        const res = await asyncFn(item);
+        results.push(res);
+        if (delayBetween > 0) await delay(delayBetween);
       }
-
-      await Promise.all(executing);
       return results;
     }
-
-    (function patchPromiseSettledFlag() {
-      const origThen = Promise.prototype.then;
-      Promise.prototype.then = function(onFulfilled, onRejected) {
-        return origThen.call(this, val => {
-          this.settled = true;
-          return onFulfilled ? onFulfilled(val) : val;
-        }, err => {
-          this.settled = true;
-          if(onRejected) return onRejected(err);
-          throw err;
-        });
-      };
-    })();
 
     function parseCSV(text) {
       const lines = text.trim().split('\n');
@@ -519,7 +491,7 @@
       const results = [];
       let teamScore = 0;
 
-      await limitedMap(players, 3, async (p) => {
+      await limitedMap(players, 1, async (p) => {
         const userId = p['User ID']?.trim();
         const userAt = p['User @']?.trim() || 'Unknown';
 
@@ -551,7 +523,7 @@
           : `${label}: <span class="${adjRounded < 0 ? 'negative' : ''}">${adjRounded}</span>`;
 
         results.push(formatted);
-      }, 250);
+      }, 200);
 
       return { lines: results, total: Math.round(teamScore) };
     }
