@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RKL Live Scores</title>
+  <title>RKL Live Scores 1.0</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
    * {
@@ -544,18 +544,19 @@
     }
 
     function getTodayString() {
-      const now = new Date();
-      const estTime = new Date(
-        now.toLocaleString("en-US", { timeZone: "America/New_York" })
-      );
-      const estHour = estTime.getHours();
-      if (estHour < 7) {
-        estTime.setDate(estTime.getDate() - 1);
-      }
-      const month = estTime.getMonth() + 1;
-      const day = estTime.getDate();
-      return `${month}/${day}`;
-    }
+  const now = new Date();
+  const estTime = new Date(
+    now.toLocaleString("en-US", { timeZone: "America/New_York" })
+  );
+  const estHour = estTime.getHours();
+  if (estHour < 7) {
+    estTime.setDate(estTime.getDate() - 1);
+  }
+  const month = estTime.getMonth() + 1;
+  const day = estTime.getDate();
+  return `${month}/${day}`;  // e.g. "7/6", "7/15"
+}
+
 
     async function loadSelectedGame(forcedIndex = null) {
       const select = document.getElementById('game-select');
@@ -674,25 +675,41 @@
     }
 
     async function init() {
-      try {
-        const scheduleResp = await fetchWithRetry(scheduleCsvUrl);
-        const rosterResp = await fetchWithRetry(rosterCsvUrl);
+  try {
+    const scheduleResp = await fetchWithRetry(scheduleCsvUrl);
+    const rosterResp = await fetchWithRetry(rosterCsvUrl);
 
-        todaysGames = parseCSV(scheduleResp.data);
-        allPlayers = parseCSV(rosterResp.data);
+    const todayStr = getTodayString();
 
-        const select = document.getElementById('game-select');
-        select.innerHTML = todaysGames.map((g, i) => {
-          return `<option value="${i}">${g['Team 1']} vs ${g['Team 2']}</option>`;
-        }).join('');
+    // Filter schedule for today's games only
+    todaysGames = parseCSV(scheduleResp.data).filter(game => {
+      const gameDate = (game['Date'] || '').trim();
+      return gameDate === todayStr;
+    });
 
-        // auto-load first game after a short delay
-        setTimeout(() => loadSelectedGame(0), 3000);
-      } catch (e) {
-        document.getElementById('game-output').innerHTML = `<div class="error">Failed to load schedule or roster data.</div>`;
-        console.error('Init error:', e);
-      }
+    allPlayers = parseCSV(rosterResp.data);
+
+    const select = document.getElementById('game-select');
+
+    if (todaysGames.length === 0) {
+      select.innerHTML = '<option>No games today</option>';
+      document.getElementById('game-output').innerHTML = '<div class="error">No games scheduled for today.</div>';
+      return;
     }
+
+    select.innerHTML = todaysGames.map((g, i) => {
+      return `<option value="${i}">${g['Team 1']} vs ${g['Team 2']}</option>`;
+    }).join('');
+
+    // Auto-load first game after a short delay
+    setTimeout(() => loadSelectedGame(0), 3000);
+
+  } catch (e) {
+    document.getElementById('game-output').innerHTML = `<div class="error">Failed to load schedule or roster data.</div>`;
+    console.error('Init error:', e);
+  }
+}
+
 
     init();
   </script>
