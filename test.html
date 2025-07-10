@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RKL Live Scores</title>
+  <title>RKL Live Scores v3</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
     * {
@@ -523,7 +523,7 @@
           : `${label}: <span class="${adjRounded < 0 ? 'negative' : ''}">${adjRounded}</span>`;
 
         results.push(formatted);
-      }, 200);
+      }, 250);  // <--- delay between requests now 250 ms
 
       return { lines: results, total: Math.round(teamScore) };
     }
