@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RKL Live Scores 1.0</title>
+  <title>RKL Live Scores 1.1</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
    * {
@@ -587,71 +587,61 @@
         { type: 'goal', player: 'Rossi', time: '27' },
         { type: 'red-card', player: 'Rienzi', time: '90+2' }
       ];
-
-      output.innerHTML = `
-        <div class="game-container">
-          <div class="scoreboard-header">
-            <div class="team-section">
-              <div class="team-name">${team1}</div>
-              <div class="team-logo">${team1.charAt(0)}</div>
-            </div>
-            
-            <div class="score-section">
-              <div class="score-display">
-                <div class="score">${team1Data.total}</div>
-                <div class="score-separator">-</div>
-                <div class="score">${team2Data.total}</div>
-              </div>
-              <div class="match-status">
-                <span class="status-indicator live"></span>
-                <span class="status-text">LIVE</span>
-              </div>
-            </div>
-            
-            <div class="team-section away">
-              <div class="team-logo away">${team2.charAt(0)}</div>
-              <div class="team-name">${team2}</div>
-            </div>
-          </div>
-
-          <div class="match-events">
-            <div class="event-item">
-              <div class="event-icon">⚽</div>
-              <div>Goals: ${events.filter(e => e.type === 'goal').length}</div>
-            </div>
-            <div class="event-item">
-              <div class="event-icon red-card">🟥</div>
-              <div>Red Cards: ${events.filter(e => e.type === 'red-card').length}</div>
-            </div>
-          </div>
-
-          <div class="team-details">
-            <div class="team-roster">
-              <div class="roster-header">
-                <div class="roster-team-name">${team1}</div>
-                <div class="roster-score">Score: ${team1Data.total}</div>
-              </div>
-              <div class="roster-list">
-                ${team1Data.lines.map(line => `<div class="player-row">${line}</div>`).join('')}
-              </div>
-            </div>
-
-            <div class="team-roster">
-              <div class="roster-header">
-                <div class="roster-team-name">${team2}</div>
-                <div class="roster-score">Score: ${team2Data.total}</div>
-              </div>
-              <div class="roster-list">
-                ${team2Data.lines.map(line => `<div class="player-row">${line}</div>`).join('')}
-              </div>
-            </div>
-          </div>
-
-          <div class="actions">
-            <button id="refresh-btn" class="refresh-btn" onclick="refreshKarma()">Refresh Karma</button>
-          </div>
+output.innerHTML = `
+  <div class="game-container">
+    <div class="scoreboard-header">
+      <div class="team-section">
+        <div class="team-name">${team1}</div>
+        <div class="team-logo">${team1.charAt(0)}</div>
+      </div>
+      
+      <div class="score-section">
+        <div class="score-display">
+          <div class="score">${team1Data.total}</div>
+          <div class="score-separator">-</div>
+          <div class="score">${team2Data.total}</div>
         </div>
-      `;
+        <div class="match-status">
+          <span class="status-indicator live"></span>
+          <span class="status-text">LIVE</span>
+        </div>
+      </div>
+      
+      <div class="team-section away">
+        <div class="team-logo away">${team2.charAt(0)}</div>
+        <div class="team-name">${team2}</div>
+      </div>
+    </div>
+
+    <!-- Removed the match-events block here -->
+
+    <div class="team-details">
+      <div class="team-roster">
+        <div class="roster-header">
+          <div class="roster-team-name">${team1}</div>
+          <div class="roster-score">Score: ${team1Data.total}</div>
+        </div>
+        <div class="roster-list">
+          ${team1Data.lines.map(line => `<div class="player-row">${line}</div>`).join('')}
+        </div>
+      </div>
+
+      <div class="team-roster">
+        <div class="roster-header">
+          <div class="roster-team-name">${team2}</div>
+          <div class="roster-score">Score: ${team2Data.total}</div>
+        </div>
+        <div class="roster-list">
+          ${team2Data.lines.map(line => `<div class="player-row">${line}</div>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="refresh-btn" class="refresh-btn" onclick="refreshKarma()">Refresh Karma</button>
+    </div>
+  </div>
+`;
     }
 
     async function refreshKarma() {
