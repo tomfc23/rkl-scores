@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RKL Live Scores v3</title>
+  <title>RKL Live Scores v4</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
-    * {
+   * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
@@ -491,7 +491,8 @@
       const results = [];
       let teamScore = 0;
 
-      await limitedMap(players, 1, async (p) => {
+      // Helper to process single player
+      async function processPlayer(p) {
         const userId = p['User ID']?.trim();
         const userAt = p['User @']?.trim() || 'Unknown';
 
@@ -523,7 +524,16 @@
           : `${label}: <span class="${adjRounded < 0 ? 'negative' : ''}">${adjRounded}</span>`;
 
         results.push(formatted);
-      }, 250);  // <--- delay between requests now 250 ms
+      }
+
+      // Process first 6 players with 200ms delay
+      await limitedMap(players.slice(0, 6), 1, processPlayer, 200);
+
+      // Wait 1000ms before next batch
+      await delay(1000);
+
+      // Process last 6 players with 200ms delay
+      await limitedMap(players.slice(6, 12), 1, processPlayer, 200);
 
       return { lines: results, total: Math.round(teamScore) };
     }
