@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RKL Live Scores 1.2</title>
+  <title>RKL Live Scores 1.3</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
-    * {
+   * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
@@ -201,7 +201,6 @@
     .roster-list {
       display: grid;
       gap: 4px;
-      /* reduce gap to tighten spacing */
     }
     
     .player-row {
@@ -211,7 +210,6 @@
       padding: 6px 12px;
       background-color: #333;
       border-radius: 8px;
-      /* remove flex to simplify spacing */
     }
     
     .positive-score {
@@ -295,7 +293,6 @@
         font-size: 36px;
       }
     }
- 
   </style>
 </head>
 <body>
@@ -318,18 +315,23 @@
     const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
     const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
 
-    const proxyBaseUrl = 'https://YOUR_WORKER_SUBDOMAIN.workers.dev'; // <-- replace this
+    // YOUR WORKER PROXY URL - REPLACE THIS with your actual worker URL!
+    const proxyBaseUrl = 'https://your-working-proxy.workers.dev';
 
     let todaysGames = [];
     let allPlayers = [];
     let lastSelectedIndex = null;
     let refreshCooldown = false;
+
+    // cache for karma 
     const karmaCache = new Map();
 
+    // Helper: delay promise
     function delay(ms) {
       return new Promise(resolve => setTimeout(resolve, ms));
     }
 
+    // Retry axios GET with delay & retries
     async function fetchWithRetry(url, retries = 3, delayMs = 1000) {
       for (let i = 0; i < retries; i++) {
         try {
@@ -341,6 +343,7 @@
       }
     }
 
+    // Limited concurrency helper: runs max N promises at once, returns results array
     async function limitedMap(array, limit, asyncFn) {
       const results = [];
       const executing = [];
@@ -349,6 +352,7 @@
         executing.push(p);
         if (executing.length >= limit) {
           await Promise.race(executing);
+          // Remove settled promises from executing
           for (let i = executing.length - 1; i >= 0; i--) {
             if (executing[i].settled) executing.splice(i, 1);
           }
@@ -358,6 +362,7 @@
       return results;
     }
 
+    // Patch Promise prototype to track settled (for cleanup)
     (function patchPromiseSettledFlag() {
       const origThen = Promise.prototype.then;
       Promise.prototype.then = function(onFulfilled, onRejected) {
@@ -366,7 +371,7 @@
           return onFulfilled ? onFulfilled(val) : val;
         }, err => {
           this.settled = true;
-          if (onRejected) return onRejected(err);
+          if(onRejected) return onRejected(err);
           throw err;
         });
       }
@@ -387,17 +392,28 @@
 
     function getTodayString() {
       const now = new Date();
-      const estTime = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
-      if (estTime.getHours() < 7) estTime.setDate(estTime.getDate() - 1);
-      return `${estTime.getMonth() + 1}/${estTime.getDate()}`;
+      const estTime = new Date(
+        now.toLocaleString("en-US", { timeZone: "America/New_York" })
+      );
+      const estHour = estTime.getHours();
+      if (estHour < 7) {
+        estTime.setDate(estTime.getDate() - 1);
+      }
+      const month = estTime.getMonth() + 1;
+      const day = estTime.getDate();
+      return `${month}/${day}`;
     }
 
     async function fetchKarma(userId) {
-      if (karmaCache.has(userId)) return karmaCache.get(userId);
-      const url = `${proxyBaseUrl}/?userId=${encodeURIComponent(userId)}`;
+      if (karmaCache.has(userId)) {
+        return karmaCache.get(userId);
+      }
+      const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
+      const proxyUrl = `${proxyBaseUrl}/?url=${encodeURIComponent(apiUrl)}`;
       try {
-        const response = await fetchWithRetry(url);
-        const data = response.data;
+        const response = await fetchWithRetry(proxyUrl);
+        // response.data is raw text, parse JSON:
+        const data = JSON.parse(response.data);
         const delta = data?.stats?.karmaDelta;
         const val = typeof delta === 'number' ? delta : Number(delta) || 0;
         karmaCache.set(userId, val);
@@ -412,6 +428,7 @@
       let teamScore = 0;
       const results = [];
 
+      // Concurrency-limited processing (max 5 fetches at once, no delay)
       await limitedMap(players, 5, async (p) => {
         const userId = p['User ID']?.trim();
         const userAt = p['User @']?.trim() || 'Unknown';
@@ -458,8 +475,12 @@
       const team1 = game['Team 1'];
       const team2 = game['Team 2'];
 
-      const team1Players = allPlayers.filter(p => p.Team === team1 && p['playing?']?.toLowerCase() === 'yes');
-      const team2Players = allPlayers.filter(p => p.Team === team2 && p['playing?']?.toLowerCase() === 'yes');
+      const team1Players = allPlayers.filter(p =>
+        p.Team === team1 && p['playing?']?.toLowerCase() === 'yes'
+      );
+      const team2Players = allPlayers.filter(p =>
+        p.Team === team2 && p['playing?']?.toLowerCase() === 'yes'
+      );
 
       const team1Data = await processRoster(team1Players);
       const team2Data = await processRoster(team2Players);
@@ -471,6 +492,7 @@
               <div class="team-logo">${team1.charAt(0)}</div>
               <div class="team-name">${team1}</div>
             </div>
+
             <div class="score-section">
               <div class="score-display">
                 <div class="score">${team1Data.total}</div>
@@ -478,11 +500,13 @@
                 <div class="score">${team2Data.total}</div>
               </div>
             </div>
+
             <div class="team-section away">
               <div class="team-logo away">${team2.charAt(0)}</div>
               <div class="team-name">${team2}</div>
             </div>
           </div>
+
           <div class="team-details">
             <div class="team-roster">
               <div class="roster-header">
@@ -493,6 +517,7 @@
                 ${team1Data.lines.map(line => `<div class="player-row">${line}</div>`).join('')}
               </div>
             </div>
+
             <div class="team-roster">
               <div class="roster-header">
                 <div class="roster-team-name">${team2}</div>
@@ -503,6 +528,7 @@
               </div>
             </div>
           </div>
+
           <div class="actions">
             <button id="refresh-btn" class="refresh-btn" onclick="refreshKarma()">Refresh Karma</button>
           </div>
@@ -550,31 +576,30 @@
         allPlayers = parseCSV(rosterResp.data);
 
         const todayStr = getTodayString();
+
         todaysGames = schedule.filter(g => g.Date.trim() === todayStr);
 
         if (todaysGames.length === 0) {
-          select.innerHTML = '<option>No games scheduled for today</option>';
-          output.innerHTML = '<div class="loading">No games scheduled for today.</div>';
+          output.innerHTML = `<div class="error">No games scheduled for today (${todayStr}).</div>`;
+          select.innerHTML = '<option>No games today</option>';
           return;
         }
 
-        select.innerHTML = '';
-        todaysGames.forEach((game, i) => {
-          const optionText = `${game['Team 1']} vs ${game['Team 2']}`;
-          const opt = document.createElement('option');
-          opt.value = i;
-          opt.textContent = optionText;
-          select.appendChild(opt);
-        });
+        select.innerHTML = todaysGames.map((g, i) => `<option value="${i}">${g['Team 1']} vs ${g['Team 2']}</option>`).join('');
 
+        // Autoload first game:
         loadSelectedGame(0);
       } catch (e) {
-        console.error(e);
-        select.innerHTML = '<option>Error loading schedule</option>';
-        output.innerHTML = '<div class="error">Error loading schedule or roster data.</div>';
+        output.innerHTML = `<div class="error">Failed to load schedule or roster: ${e.message}</div>`;
+        select.innerHTML = '<option>Error loading data</option>';
       }
     }
 
+    document.getElementById('game-select').addEventListener('change', () => {
+      loadSelectedGame();
+    });
+
+    // Initialize page
     init();
   </script>
 </body>
