@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RKL Live Scores 1.1</title>
+  <title>RKL Live Scores 1.2</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
     * {
@@ -318,6 +318,8 @@
     const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
     const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
 
+    const proxyBaseUrl = 'https://YOUR_WORKER_SUBDOMAIN.workers.dev'; // <-- replace this
+
     let todaysGames = [];
     let allPlayers = [];
     let lastSelectedIndex = null;
@@ -364,7 +366,7 @@
           return onFulfilled ? onFulfilled(val) : val;
         }, err => {
           this.settled = true;
-          if(onRejected) return onRejected(err);
+          if (onRejected) return onRejected(err);
           throw err;
         });
       }
@@ -392,13 +394,10 @@
 
     async function fetchKarma(userId) {
       if (karmaCache.has(userId)) return karmaCache.get(userId);
-
-      const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
-      const proxyUrl = `https://YOUR_WORKER_SUBDOMAIN.workers.dev/?url=${encodeURIComponent(apiUrl)}&cache_bust=${Date.now()}`;
-
+      const url = `${proxyBaseUrl}/?userId=${encodeURIComponent(userId)}`;
       try {
-        const response = await fetchWithRetry(proxyUrl);
-        const data = JSON.parse(response.data.contents);
+        const response = await fetchWithRetry(url);
+        const data = response.data;
         const delta = data?.stats?.karmaDelta;
         const val = typeof delta === 'number' ? delta : Number(delta) || 0;
         karmaCache.set(userId, val);
