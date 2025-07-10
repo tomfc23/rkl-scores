@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RKL Live Scores 1.2</title>
+  <title>RKL Live Scores</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
    * {
@@ -694,7 +694,7 @@ output.innerHTML = `
     }).join('');
 
     // Auto-load first game after a short delay
-    setTimeout(() => loadSelectedGame(0), 3000);
+    
 
   } catch (e) {
     document.getElementById('game-output').innerHTML = `<div class="error">Failed to load schedule or roster data.</div>`;
