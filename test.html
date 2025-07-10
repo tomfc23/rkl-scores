@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RKL Live Scores v6</title>
+  <title>RKL Live Scores v7</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
     * {
@@ -439,22 +439,23 @@
       }
     }
 
-    // Concurrency-limited batch fetch with pauses:
-    async function fetchKarmaInBatches(players) {
+    // Process roster with concurrency=2, 200ms delay between each user fetch in batch,
+    // and 2000ms delay between the first 6 and last 6 players
+    async function processRoster(players) {
       const results = [];
+      let teamScore = 0;
       const concurrency = 2;
       const delayBetweenRequests = 200;
-      const firstBatchPause = 1000;
 
       for (let i = 0; i < players.length; i += concurrency) {
-        // After first 6 users, wait longer
+        // After first 6 users, wait longer before next batch
         if (i === 6) {
-          await delay(firstBatchPause);
+          await delay(2000);
         }
 
         const batch = players.slice(i, i + concurrency);
 
-        // Launch batch requests concurrently
+        // Run concurrent fetches for batch
         const batchResults = await Promise.all(batch.map(async (p) => {
           const userId = p['User ID']?.trim();
           const userAt = p['User @']?.trim() || 'Unknown';
@@ -463,59 +464,37 @@
             return `${userAt}: missing user ID`;
           }
 
-          try {
-            const karma = await fetchKarma(userId);
-            if (karma === null) {
-              return `${userAt}: error fetching`;
-            }
-            const deduction = parseFloat(p['deductions'] || 0);
-            const adjusted = karma - deduction;
-            const role = (p['role'] || '').trim().toLowerCase();
-            const isCaptain = role === 'captain';
-            const boosted = isCaptain ? adjusted * 1.5 : adjusted;
-            const adjRounded = Math.round(adjusted);
-            const boostRounded = Math.round(boosted);
-            const label = `${userAt}${isCaptain ? ' (c)' : ''}`;
-            return isCaptain
-              ? `${label}: <span class="${adjRounded < 0 ? 'negative' : ''}">${adjRounded}</span> → <span class="${boostRounded < 0 ? 'negative' : ''}">${boostRounded}</span>`
-              : `${label}: <span class="${adjRounded < 0 ? 'negative' : ''}">${adjRounded}</span>`;
-          } catch {
+          const karma = await fetchKarma(userId);
+          if (karma === null) {
             return `${userAt}: error fetching`;
           }
+
+          const deduction = parseFloat(p['deductions'] || 0);
+          const adjusted = karma - deduction;
+          const role = (p['role'] || '').trim().toLowerCase();
+          const isCaptain = role === 'captain';
+          const boosted = isCaptain ? adjusted * 1.5 : adjusted;
+
+          teamScore += boosted;
+
+          const adjRounded = Math.round(adjusted);
+          const boostRounded = Math.round(boosted);
+          const label = `${userAt}${isCaptain ? ' (c)' : ''}`;
+
+          return isCaptain
+            ? `${label}: <span class="${adjRounded < 0 ? 'negative' : ''}">${adjRounded}</span> → <span class="${boostRounded < 0 ? 'negative' : ''}">${boostRounded}</span>`
+            : `${label}: <span class="${adjRounded < 0 ? 'negative' : ''}">${adjRounded}</span>`;
         }));
 
         results.push(...batchResults);
 
-        // Delay before next batch (except if last batch)
+        // Delay between batches except after last batch
         if (i + concurrency < players.length) {
           await delay(delayBetweenRequests);
         }
       }
 
-      return results;
-    }
-
-    async function processRoster(players) {
-      const lines = await fetchKarmaInBatches(players);
-      let teamScore = 0;
-
-      for (let i = 0; i < players.length; i++) {
-        const p = players[i];
-        const userId = p['User ID']?.trim();
-        if (!userId || userId.toLowerCase() === 'not found') continue;
-        const cached = karmaCache.get(userId);
-        if (cached === undefined) continue;
-
-        const deduction = parseFloat(p['deductions'] || 0);
-        const adjusted = cached - deduction;
-        const role = (p['role'] || '').trim().toLowerCase();
-        const isCaptain = role === 'captain';
-        const boosted = isCaptain ? adjusted * 1.5 : adjusted;
-        teamScore += boosted;
-      }
-
-      // Round teamScore for display
-      return { lines, total: Math.round(teamScore) };
+      return { lines: results, total: Math.round(teamScore) };
     }
 
     async function fetchKarma(userId) {
@@ -533,6 +512,27 @@
         console.error(`Error fetching karma for ${userId}:`, e);
         return null;
       }
+    }
+
+    function parseCSV(text) {
+      const lines = text.trim().split('\n');
+      const headers = lines[0].split(',').map(h => h.trim());
+      return lines.slice(1).map(line => {
+        const parts = line.split(',').map(p => p.trim());
+        const obj = {};
+        headers.forEach((h, i) => {
+          obj[h] = parts[i];
+        });
+        return obj;
+      });
+    }
+
+    function getTodayString() {
+      const now = new Date();
+      const estTime = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+      const estHour = estTime.getHours();
+      if (estHour < 7) estTime.setDate(estTime.getDate() - 1);
+      return `${estTime.getMonth() + 1}/${estTime.getDate()}`;
     }
 
     async function loadSelectedGame(forcedIndex = null) {
@@ -621,27 +621,6 @@
           btn.innerText = "Refresh Score";
         }
       }, 5000);
-    }
-
-    function parseCSV(text) {
-      const lines = text.trim().split('\n');
-      const headers = lines[0].split(',').map(h => h.trim());
-      return lines.slice(1).map(line => {
-        const parts = line.split(',').map(p => p.trim());
-        const obj = {};
-        headers.forEach((h, i) => {
-          obj[h] = parts[i];
-        });
-        return obj;
-      });
-    }
-
-    function getTodayString() {
-      const now = new Date();
-      const estTime = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
-      const estHour = estTime.getHours();
-      if (estHour < 7) estTime.setDate(estTime.getDate() - 1);
-      return `${estTime.getMonth() + 1}/${estTime.getDate()}`;
     }
 
     async function init() {
