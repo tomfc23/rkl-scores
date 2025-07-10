@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RKL Live Scores v10</title>
+  <title>RKL Live Scores v11</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
     * {
@@ -417,6 +417,12 @@
     const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
     const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
 
+    // Two different proxy URLs for switching
+    const proxyUrls = [
+      'https://api.allorigins.win/get?url=',
+      'https://api.allorigins.win/raw?url='
+    ];
+
     let todaysGames = [];
     let allPlayers = [];
     let lastSelectedIndex = null;
@@ -428,81 +434,27 @@
       return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    async function fetchWithRetry(url, retries = 1, delayMs = 0) {
-      // No retries
-      return await axios.get(url);
-    }
-
-    async function limitedMap(array, concurrency, asyncFn, delayBetween = 0) {
-      const results = [];
-      for (let i = 0; i < array.length; i += concurrency) {
-        const batch = array.slice(i, i + concurrency);
-        const batchResults = await Promise.all(batch.map(item => asyncFn(item)));
-        results.push(...batchResults);
-        if (delayBetween > 0 && i + concurrency < array.length) {
-          await delay(delayBetween);
-        }
-      }
-      return results;
-    }
-
-    function parseCSV(text) {
-      const lines = text.trim().split('\n');
-      const headers = lines[0].split(',').map(h => h.trim());
-      return lines.slice(1).map(line => {
-        const parts = line.split(',').map(p => p.trim());
-        const obj = {};
-        headers.forEach((h, i) => {
-          obj[h] = parts[i];
-        });
-        return obj;
-      });
-    }
-
-    function getTodayString() {
-      const now = new Date();
-      const estTime = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
-      const estHour = estTime.getHours();
-      if (estHour < 7) estTime.setDate(estTime.getDate() - 1);
-      return `${estTime.getMonth() + 1}/${estTime.getDate()}`;
-    }
-
-    async function fetchKarma(userId) {
-      if (karmaCache.has(userId)) return karmaCache.get(userId);
+    async function fetchKarmaWithProxy(userId, proxyBase) {
       const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}&cache_bust=${Date.now()}`;
+      const proxyUrl = `${proxyBase}${encodeURIComponent(apiUrl)}&cache_bust=${Date.now()}`;
       try {
-        const response = await fetchWithRetry(proxyUrl);
-        const data = JSON.parse(response.data.contents);
+        const response = await axios.get(proxyUrl);
+        // allorigins.win 'get' wraps data in .data.contents; 'raw' returns direct data
+        const data = proxyBase.includes('/get?url=')
+          ? JSON.parse(response.data.contents)
+          : response.data;
         const delta = data?.stats?.karmaDelta;
         const val = typeof delta === 'number' ? delta : Number(delta) || 0;
         karmaCache.set(userId, val);
         return val;
       } catch (e) {
-        console.error(`Error fetching karma for ${userId}:`, e);
+        console.error(`Error fetching karma for ${userId} via ${proxyBase}:`, e);
         return null;
       }
     }
 
-    async function processRoster(players) {
-      const results = [];
-      let teamScore = 0;
-
-      const processed = await limitedMap(players, 3, async (p) => {
-        return processPlayer(p);
-      }, 300);
-
-      processed.forEach(({ karma, deduction, role, userAt, adjusted, boosted }) => {
-        if (karma === null) return;
-        teamScore += boosted;
-      });
-
-      const lines = processed.map(({ formatted }) => formatted);
-
-      return { lines, total: Math.round(teamScore) };
-    }
-
-    async function processPlayer(p) {
+    // Process player with specified proxy
+    async function processPlayer(p, proxyBase) {
       const userId = p['User ID']?.trim();
       const userAt = p['User @']?.trim() || 'Unknown';
 
@@ -510,7 +462,7 @@
         return { userAt: userAt, karma: null, deduction: 0, role: '', formatted: `${userAt}: missing user ID` };
       }
 
-      const karma = await fetchKarma(userId);
+      const karma = await fetchKarmaWithProxy(userId, proxyBase);
       if (karma === null) {
         return { userAt: userAt, karma: null, deduction: 0, role: '', formatted: `${userAt}: error fetching` };
       }
@@ -530,6 +482,57 @@
         : `${label}: <span class="${adjRounded < 0 ? 'negative' : ''}">${adjRounded}</span>`;
 
       return { userAt, karma, deduction, role, adjusted, boosted, isCaptain, formatted };
+    }
+
+    // Custom limited map for concurrency 1 (serial)
+    async function limitedMapSerial(array, asyncFn) {
+      const results = [];
+      for (const item of array) {
+        const res = await asyncFn(item);
+        results.push(res);
+      }
+      return results;
+    }
+
+    // Limited map with concurrency and delay between batches
+    async function limitedMapConcurrent(array, concurrency, asyncFn, delayBetween = 0) {
+      const results = [];
+      for (let i = 0; i < array.length; i += concurrency) {
+        const batch = array.slice(i, i + concurrency);
+        const batchResults = await Promise.all(batch.map(item => asyncFn(item)));
+        results.push(...batchResults);
+        if (delayBetween > 0 && i + concurrency < array.length) {
+          await delay(delayBetween);
+        }
+      }
+      return results;
+    }
+
+    async function processRoster(players) {
+      const results = [];
+      let teamScore = 0;
+
+      // First 6 sequential, no delay, proxy 0
+      const firstSix = players.slice(0, 6);
+      const firstResults = await limitedMapSerial(firstSix, p => processPlayer(p, proxyUrls[0]));
+
+      // Wait 5 seconds before continuing
+      await delay(5000);
+
+      // Remaining players, concurrency 2, 300ms delay, proxy 1
+      const rest = players.slice(6);
+      const restResults = await limitedMapConcurrent(rest, 2, p => processPlayer(p, proxyUrls[1]), 300);
+
+      const allResults = firstResults.concat(restResults);
+
+      allResults.forEach(({ karma, boosted }) => {
+        if (karma === null) return;
+        teamScore += boosted;
+      });
+
+      const lines = allResults.map(({ formatted }) => formatted);
+
+      return { lines, total: Math.round(teamScore) };
     }
 
     async function loadSelectedGame(forcedIndex = null) {
