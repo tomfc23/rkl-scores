@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RKL Live Scores v11</title>
+  <title>RKL Live Scores v12</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <style>
     * {
@@ -434,6 +434,29 @@
       return new Promise(resolve => setTimeout(resolve, ms));
     }
 
+    // Basic CSV parser
+    function parseCSV(csvText) {
+      const lines = csvText.trim().split('\n');
+      const headers = lines.shift().split(',').map(h => h.trim());
+      return lines.map(line => {
+        const values = line.split(',').map(v => v.trim());
+        const obj = {};
+        headers.forEach((header, i) => {
+          obj[header] = values[i] || '';
+        });
+        return obj;
+      });
+    }
+
+    // Get today's date in M/D/YY format (adjust if your CSV uses different)
+    function getTodayString() {
+      const now = new Date();
+      const month = now.getMonth() + 1;
+      const day = now.getDate();
+      const year = now.getFullYear() % 100;
+      return `${month}/${day}/${year}`;
+    }
+
     async function fetchKarmaWithProxy(userId, proxyBase) {
       const apiUrl = `https://api.real.vg/user/${userId}/karmafeed`;
       const proxyUrl = `${proxyBase}${encodeURIComponent(apiUrl)}&cache_bust=${Date.now()}`;
@@ -453,7 +476,6 @@
       }
     }
 
-    // Process player with specified proxy
     async function processPlayer(p, proxyBase) {
       const userId = p['User ID']?.trim();
       const userAt = p['User @']?.trim() || 'Unknown';
@@ -484,7 +506,6 @@
       return { userAt, karma, deduction, role, adjusted, boosted, isCaptain, formatted };
     }
 
-    // Custom limited map for concurrency 1 (serial)
     async function limitedMapSerial(array, asyncFn) {
       const results = [];
       for (const item of array) {
@@ -494,7 +515,6 @@
       return results;
     }
 
-    // Limited map with concurrency and delay between batches
     async function limitedMapConcurrent(array, concurrency, asyncFn, delayBetween = 0) {
       const results = [];
       for (let i = 0; i < array.length; i += concurrency) {
@@ -509,9 +529,6 @@
     }
 
     async function processRoster(players) {
-      const results = [];
-      let teamScore = 0;
-
       // First 6 sequential, no delay, proxy 0
       const firstSix = players.slice(0, 6);
       const firstResults = await limitedMapSerial(firstSix, p => processPlayer(p, proxyUrls[0]));
@@ -525,6 +542,7 @@
 
       const allResults = firstResults.concat(restResults);
 
+      let teamScore = 0;
       allResults.forEach(({ karma, boosted }) => {
         if (karma === null) return;
         teamScore += boosted;
@@ -562,98 +580,98 @@
               <div class="team-logo">${team1.charAt(0)}</div>
             </div>
             <div class="score-section">
-              <div class="score-display">
-                <div class="score">${team1Data.total}</div>
-                <div class="score-separator">-</div>
-                <div class="score">${team2Data.total}</div>
-              </div>
+              <div class="score">${team1Data.total}</div>
+              <div class="score-separator">-</div>
+              <div class="score">${team2Data.total}</div>
             </div>
             <div class="team-section away">
-              <div class="team-name">${team2}</div>
               <div class="team-logo away">${team2.charAt(0)}</div>
+              <div class="team-name">${team2}</div>
             </div>
           </div>
           <div class="team-details">
             <div class="team-roster">
               <div class="roster-header">
-                <div class="roster-team-name">${team1}</div>
-                <div class="roster-score">Score: ${team1Data.total}</div>
+                <div class="roster-team-name">${team1} Roster</div>
+                <div class="roster-score">Total Karma: ${team1Data.total}</div>
               </div>
-              <div class="roster-list">
-                ${team1Data.lines.map(p => `<div class="player-row"><div class="player-name">${p}</div></div>`).join('')}
-              </div>
+              <div class="roster-list">${team1Data.lines.map(line => `<div class="player-row">${line}</div>`).join('')}</div>
             </div>
             <div class="team-roster">
               <div class="roster-header">
-                <div class="roster-team-name">${team2}</div>
-                <div class="roster-score">Score: ${team2Data.total}</div>
+                <div class="roster-team-name">${team2} Roster</div>
+                <div class="roster-score">Total Karma: ${team2Data.total}</div>
               </div>
-              <div class="roster-list">
-                ${team2Data.lines.map(p => `<div class="player-row"><div class="player-name">${p}</div></div>`).join('')}
-              </div>
+              <div class="roster-list">${team2Data.lines.map(line => `<div class="player-row">${line}</div>`).join('')}</div>
             </div>
           </div>
           <div class="actions">
-            <button id="refresh-btn" class="refresh-btn" onclick="refreshScore()" disabled>Refresh Score</button>
+            <button id="refresh-btn" class="refresh-btn" onclick="refreshGame()" ${refreshCooldown ? 'disabled' : ''}>Refresh Karma</button>
           </div>
         </div>
       `;
-
-      const btn = document.getElementById('refresh-btn');
-      setTimeout(() => {
-        if (btn) btn.disabled = false;
-      }, 5000);
     }
 
-    async function refreshScore() {
-      if (refreshCooldown || lastSelectedIndex === null) return;
+    async function refreshGame() {
+      if (refreshCooldown) return;
       refreshCooldown = true;
-      const btn = document.getElementById('refresh-btn');
-      if (btn) {
-        btn.disabled = true;
-        btn.innerText = "Refreshing...";
-      }
+      document.getElementById('refresh-btn').disabled = true;
+
       await loadSelectedGame(lastSelectedIndex);
+
       setTimeout(() => {
         refreshCooldown = false;
-        if (btn) {
-          btn.disabled = false;
-          btn.innerText = "Refresh Score";
-        }
-      }, 5000);
+        const btn = document.getElementById('refresh-btn');
+        if (btn) btn.disabled = false;
+      }, 4000);
     }
 
     async function init() {
-      const select = document.getElementById('game-select');
-      const output = document.getElementById('game-output');
-      select.innerHTML = '<option>Loading schedule...</option>';
       try {
-        const [scheduleResp, rosterResp] = await Promise.all([
-          axios.get(scheduleCsvUrl),
-          axios.get(rosterCsvUrl)
-        ]);
-        const allGames = parseCSV(scheduleResp.data);
-        allPlayers = parseCSV(rosterResp.data);
+        // Fetch schedule CSV (proxy via allorigins)
+        const scheduleResponse = await axios.get(proxyUrls[0] + encodeURIComponent(scheduleCsvUrl));
+        const scheduleCsvText = proxyUrls[0].includes('/get?url=') ? scheduleResponse.data.contents : scheduleResponse.data;
+        const allGames = parseCSV(scheduleCsvText);
         const today = getTodayString();
+
+        // Filter schedule for today
         todaysGames = allGames.filter(g => g['Date'] === today);
-        if (todaysGames.length === 0) {
-          select.innerHTML = '<option>No games today</option>';
-          output.innerHTML = '';
+        if (!todaysGames.length) {
+          document.getElementById('game-output').innerHTML = `<div class="error">No games scheduled for today (${today}).</div>`;
           return;
         }
+
+        // Fetch roster CSV
+        const rosterResponse = await axios.get(proxyUrls[0] + encodeURIComponent(rosterCsvUrl));
+        const rosterCsvText = proxyUrls[0].includes('/get?url=') ? rosterResponse.data.contents : rosterResponse.data;
+        allPlayers = parseCSV(rosterCsvText);
+
+        // Populate dropdown
+        const select = document.getElementById('game-select');
         select.innerHTML = '';
-        todaysGames.forEach(game => {
+        todaysGames.forEach((game, i) => {
           const option = document.createElement('option');
-          option.text = `${game['Team 1']} vs ${game['Team 2']}`;
-          select.add(option);
+          option.value = i;
+          option.textContent = `${game['Team 1']} vs ${game['Team 2']} - ${game['Date']}`;
+          select.appendChild(option);
         });
-      } catch (err) {
-        output.innerHTML = '<div class="error">Error loading schedule or roster.</div>';
-        console.error('Load error:', err);
+
+        // Load first game automatically
+        await loadSelectedGame(0);
+      } catch (e) {
+        console.error('Error loading schedule or roster:', e);
+        document.getElementById('game-output').innerHTML = `<div class="error">Error loading schedule or roster data. Check console.</div>`;
       }
     }
 
-    init();
+    function loadSelectedGame() {
+      const select = document.getElementById('game-select');
+      const index = select.selectedIndex;
+      loadSelectedGame(index);
+    }
+
+    // Start on page load
+    window.onload = init;
   </script>
 </body>
 </html>
