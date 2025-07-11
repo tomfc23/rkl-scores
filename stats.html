@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>RKL Daily Stats 5.0</title>
+  <title>RKL Daily Stats</title>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <style>
     * {
@@ -26,7 +26,7 @@
       text-align: center;
       margin-bottom: 20px;
       font-size: 14px;
-      color: #00ff88;
+      color: #11c16e;
       text-decoration: underline;
     }
 
@@ -40,7 +40,7 @@
     .loading-bar {
       text-align: center;
       font-size: 14px;
-      color: #00ff88;
+      color: #11c16e;
       margin-bottom: 12px;
     }
 
@@ -56,7 +56,7 @@
       font-weight: 600;
       cursor: pointer;
       padding: 14px 20px;
-      border-bottom: 1px solid #00ff88;
+      border-bottom: 1px solid #11c16e;
       background-color: #1f1f1f;
       transition: background-color 0.2s;
     }
@@ -77,17 +77,17 @@
     }
 
     .highlight {
-      color: #00ff88;
+      color: #11c16e;
       font-weight: 500;
     }
   </style>
 </head>
 <body>
-<a class="home-link" href="index.html">← Home</a>
+
 <h1>RKL Daily Stats</h1>
 <div class="loading-bar" id="loading-bar"></div>
 <div id="stats"></div>
-
+<a class="home-link" href="index.html">← Home</a>
 <script>
 const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
 const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
