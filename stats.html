@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>RKL Daily Stats 3.0</title>
+  <title>RKL Daily Stats 4.0</title>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <style>
     body {
-      background: #0d1117;
-      color: #c9d1d9;
+      background: #000;
+      color: #00ff88;
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       padding: 30px;
       max-width: 700px;
@@ -21,18 +21,18 @@
     .stat-section {
       margin: 20px 0;
       border-radius: 8px;
-      background: #161b22;
-      box-shadow: 0 0 0 1px #30363d;
+      background: #111;
+      box-shadow: 0 0 0 1px #00ff88;
     }
     .stat-title {
       font-size: 16px;
       font-weight: bold;
       cursor: pointer;
       padding: 14px 16px;
-      border-bottom: 1px solid #30363d;
+      border-bottom: 1px solid #00ff88;
     }
     .stat-title:hover {
-      background-color: #21262d;
+      background-color: #002d1a;
     }
     .stat-list {
       display: none;
@@ -43,18 +43,27 @@
       font-size: 14px;
     }
     .highlight {
-      color: #58a6ff;
+      color: #00ff88;
       font-weight: normal;
     }
     .loading-bar {
       text-align: center;
       font-size: 14px;
-      color: #8b949e;
+      color: #00ff88;
       margin-bottom: 12px;
+    }
+    .home-link {
+      display: block;
+      text-align: center;
+      margin-bottom: 20px;
+      font-size: 14px;
+      color: #00ff88;
+      text-decoration: underline;
     }
   </style>
 </head>
 <body>
+<a class="home-link" href="index.html">← Home</a>
 <h1>RKL Daily Stats</h1>
 <div class="loading-bar" id="loading-bar"></div>
 <div id="stats"></div>
@@ -127,7 +136,6 @@ async function loadStats() {
     loadingBar.textContent = `Loaded ${loaded} out of ${players.length} players...`;
   }
 
-  // Aggregate by team
   const teamScores = {};
   for (let [user, { team, score }] of karmaMap.entries()) {
     teamScores[team] = (teamScores[team] || 0) + score;
@@ -146,7 +154,7 @@ async function loadStats() {
   }).sort((a,b)=>b.rel-a.rel);
 
   function buildSection(title, list, key, type) {
-    const id = `${type}-${key}`;
+    const id = `${type}-${key}-${title.replace(/\s+/g,'-')}`;
     const preview = type === 'player'
       ? `${list[0].user} (${list[0].team}) - ${key === 'rel' ? list[0].rel : list[0].score.toFixed(1)}`
       : `${list[0][0]} - ${list[0][1].toFixed(1)}`;
@@ -170,9 +178,9 @@ async function loadStats() {
   loadingBar.textContent = '';
   stats.innerHTML = `
     ${buildSection('Top 3 Teams', teamSorted.slice(0,3), 1, 'team')}
-    ${buildSection('Bottom 3 Teams', teamSorted.slice().reverse().slice(0,3), 1, 'team')}
+    ${buildSection('Bottom 3 Teams', teamSorted.slice(-3).reverse(), 1, 'team')}
     ${buildSection('Top 5 Players', playerSorted.slice(0,5).map(([user, val]) => ({ user, ...val })), 'score', 'player')}
-    ${buildSection('Bottom 5 Players', playerSorted.slice().reverse().slice(0,5).map(([user, val]) => ({ user, ...val })), 'score', 'player')}
+    ${buildSection('Bottom 5 Players', playerSorted.slice(-5).map(([user, val]) => ({ user, ...val })), 'score', 'player')}
     ${buildSection('League Median Team Score', [["Median", teamMedian]], 1, 'team')}
     ${buildSection('League Median Player Score', [["Median", playerMedian]], 1, 'team')}
     ${buildSection('Top 5 REL (Relative Performance)', relScores.slice(0,5), 'rel', 'player')}
