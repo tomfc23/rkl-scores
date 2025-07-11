@@ -2,41 +2,61 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>RKL Daily Stats 2.0</title>
+  <title>RKL Daily Stats 3.0</title>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <style>
     body {
-      background: #121212;
-      color: #fff;
-      font-family: sans-serif;
-      padding: 20px;
+      background: #0d1117;
+      color: #c9d1d9;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 30px;
+      max-width: 700px;
+      margin: auto;
     }
-    h1 { text-align: center; }
-    .stat-section { margin: 20px 0; }
+    h1 {
+      text-align: center;
+      font-size: 28px;
+      margin-bottom: 20px;
+    }
+    .stat-section {
+      margin: 20px 0;
+      border-radius: 8px;
+      background: #161b22;
+      box-shadow: 0 0 0 1px #30363d;
+    }
     .stat-title {
-      font-size: 18px;
+      font-size: 16px;
       font-weight: bold;
       cursor: pointer;
-      margin: 12px 0;
-      background: #222;
-      padding: 10px;
-      border-radius: 6px;
+      padding: 14px 16px;
+      border-bottom: 1px solid #30363d;
+    }
+    .stat-title:hover {
+      background-color: #21262d;
     }
     .stat-list {
       display: none;
-      margin-top: 10px;
-      padding-left: 15px;
+      padding: 10px 16px 16px;
     }
     .player, .team {
-      margin: 4px 0;
-      font-size: 15px;
+      margin: 6px 0;
+      font-size: 14px;
     }
-    .highlight { color: #2ecc71; }
-    .lowlight { color: #e74c3c; }
+    .highlight {
+      color: #58a6ff;
+      font-weight: normal;
+    }
+    .loading-bar {
+      text-align: center;
+      font-size: 14px;
+      color: #8b949e;
+      margin-bottom: 12px;
+    }
   </style>
 </head>
 <body>
 <h1>RKL Daily Stats</h1>
+<div class="loading-bar" id="loading-bar"></div>
 <div id="stats"></div>
 
 <script>
@@ -79,7 +99,9 @@ function toggleList(id) {
 
 async function loadStats() {
   const stats = document.getElementById('stats');
-  stats.innerHTML = 'Loading...';
+  const loadingBar = document.getElementById('loading-bar');
+  stats.innerHTML = '';
+  loadingBar.textContent = 'Loading...';
 
   const [scheduleRes, rosterRes] = await Promise.all([
     axios.get(scheduleCsvUrl),
@@ -92,11 +114,17 @@ async function loadStats() {
   const players = parseCSV(rosterRes.data).filter(p => p['playing?']?.toLowerCase() === 'yes' && teamsToday.has(p.Team));
 
   const karmaMap = new Map();
+  let loaded = 0;
   for (let p of players) {
     const userId = p['User ID']?.trim();
+    const userAt = p['User @']?.replace(/^@/, '');
     if (!userId || userId.toLowerCase() === 'not found') continue;
     const karma = await fetchKarma(userId);
-    if (karma !== null) karmaMap.set(p['User @'], { team: p.Team, score: karma });
+    if (karma !== null) {
+      karmaMap.set(userAt, { team: p.Team, score: karma });
+      loaded++;
+    }
+    loadingBar.textContent = `Loaded ${loaded} out of ${players.length} players...`;
   }
 
   // Aggregate by team
@@ -117,9 +145,11 @@ async function loadStats() {
     return { user, team: val.team, score: val.score, rel: rel.toFixed(2) };
   }).sort((a,b)=>b.rel-a.rel);
 
-  function buildSection(title, list, key, type, previewLabel) {
+  function buildSection(title, list, key, type) {
     const id = `${type}-${key}`;
-    const preview = type === 'player' ? `${list[0].user} (${list[0].team})` : `${list[0][0]}`;
+    const preview = type === 'player'
+      ? `${list[0].user} (${list[0].team}) - ${key === 'rel' ? list[0].rel : list[0].score.toFixed(1)}`
+      : `${list[0][0]} - ${list[0][1].toFixed(1)}`;
     return `
       <div class="stat-section">
         <div class="stat-title" onclick="toggleList('${id}')">
@@ -137,13 +167,14 @@ async function loadStats() {
       </div>`;
   }
 
+  loadingBar.textContent = '';
   stats.innerHTML = `
     ${buildSection('Top 3 Teams', teamSorted.slice(0,3), 1, 'team')}
-    ${buildSection('Bottom 3 Teams', teamSorted.slice(-3).reverse(), 1, 'team')}
+    ${buildSection('Bottom 3 Teams', teamSorted.slice().reverse().slice(0,3), 1, 'team')}
     ${buildSection('Top 5 Players', playerSorted.slice(0,5).map(([user, val]) => ({ user, ...val })), 'score', 'player')}
-    ${buildSection('Bottom 5 Players', playerSorted.slice(-5).reverse().map(([user, val]) => ({ user, ...val })), 'score', 'player')}
-    <div class="stat-section">League Median Team Score: <span class="highlight">${teamMedian.toFixed(1)}</span></div>
-    <div class="stat-section">League Median Player Score: <span class="highlight">${playerMedian.toFixed(1)}</span></div>
+    ${buildSection('Bottom 5 Players', playerSorted.slice().reverse().slice(0,5).map(([user, val]) => ({ user, ...val })), 'score', 'player')}
+    ${buildSection('League Median Team Score', [["Median", teamMedian]], 1, 'team')}
+    ${buildSection('League Median Player Score', [["Median", playerMedian]], 1, 'team')}
     ${buildSection('Top 5 REL (Relative Performance)', relScores.slice(0,5), 'rel', 'player')}
   `;
 }
