@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>RKL Daily Stats</title>
+  <title>RKL Daily Stats 5.0</title>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <style>
     * {
@@ -123,8 +123,16 @@ async function fetchKarma(userId) {
 
 function toggleList(id) {
   const el = document.getElementById(id);
-  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  if (el) {
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  }
 }
+
+document.addEventListener('click', function(e) {
+  if (e.target.classList.contains('stat-title')) {
+    toggleList(e.target.getAttribute('data-target'));
+  }
+});
 
 async function loadStats() {
   const stats = document.getElementById('stats');
@@ -144,17 +152,24 @@ async function loadStats() {
 
   const karmaMap = new Map();
   let loaded = 0;
-  for (let p of players) {
-    const userId = p['User ID']?.trim();
-    const userAt = p['User @']?.replace(/^@/, '');
-    if (!userId || userId.toLowerCase() === 'not found') continue;
-    const karma = await fetchKarma(userId);
-    if (karma !== null) {
-      karmaMap.set(userAt, { team: p.Team, score: karma });
-      loaded++;
+
+  async function fetchInBatches(items, batchSize) {
+    for (let i = 0; i < items.length; i += batchSize) {
+      await Promise.all(items.slice(i, i + batchSize).map(async p => {
+        const userId = p['User ID']?.trim();
+        const userAt = p['User @']?.replace(/^@/, '');
+        if (!userId || userId.toLowerCase() === 'not found') return;
+        const karma = await fetchKarma(userId);
+        if (karma !== null) {
+          karmaMap.set(userAt, { team: p.Team, score: karma });
+          loaded++;
+        }
+        loadingBar.textContent = `Loaded ${loaded} out of ${players.length} players...`;
+      }));
     }
-    loadingBar.textContent = `Loaded ${loaded} out of ${players.length} players...`;
   }
+
+  await fetchInBatches(players, 10);
 
   const teamScores = {};
   for (let [user, { team, score }] of karmaMap.entries()) {
@@ -180,7 +195,7 @@ async function loadStats() {
       : `${list[0][0]} - ${list[0][1].toFixed(1)}`;
     return `
       <div class="stat-section">
-        <div class="stat-title" onclick="toggleList('${id}')">
+        <div class="stat-title" data-target="${id}">
           ${title}: <span class="highlight">${preview}</span>
         </div>
         <div class="stat-list" id="${id}">
@@ -198,9 +213,9 @@ async function loadStats() {
   loadingBar.textContent = '';
   stats.innerHTML = `
     ${buildSection('Top 3 Teams', teamSorted.slice(0,3), 1, 'team')}
-    ${buildSection('Bottom 3 Teams', teamSorted.slice().reverse().slice(0,3), 1, 'team')}
+    ${buildSection('Bottom 3 Teams', teamSorted.slice(-3).reverse(), 1, 'team')}
     ${buildSection('Top 5 Players', playerSorted.slice(0,5).map(([user, val]) => ({ user, ...val })), 'score', 'player')}
-    ${buildSection('Bottom 5 Players', playerSorted.slice().reverse().slice(0,5).map(([user, val]) => ({ user, ...val })), 'score', 'player')}
+    ${buildSection('Bottom 5 Players', playerSorted.slice(-5).reverse().map(([user, val]) => ({ user, ...val })), 'score', 'player')}
     ${buildSection('League Median Team Score', [["Median", teamMedian]], 1, 'team')}
     ${buildSection('League Median Player Score', [["Median", playerMedian]], 1, 'team')}
     ${buildSection('Top 5 REL (Relative Performance)', relScores.slice(0,5), 'rel', 'player')}
