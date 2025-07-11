@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Today's RKL Players</title>
+  <title>RKL Daily Stats</title>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <style>
     body {
@@ -11,111 +11,137 @@
       font-family: sans-serif;
       padding: 20px;
     }
-    h1 {
-      text-align: center;
-      margin-bottom: 20px;
+    h1 { text-align: center; }
+    .stat-section { margin: 20px 0; }
+    .stat-title {
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      margin: 12px 0;
+      background: #222;
+      padding: 10px;
+      border-radius: 6px;
     }
-    .player {
-      margin: 6px 0;
-      font-size: 16px;
+    .stat-list {
+      display: none;
+      margin-top: 10px;
+      padding-left: 15px;
     }
-    .positive { color: #2ecc71; }
-    .negative { color: #e74c3c; }
-    .neutral  { color: #bdc3c7; }
-    .loading, .error {
-      text-align: center;
-      margin-top: 40px;
-      font-size: 16px;
-      color: #aaa;
+    .player, .team {
+      margin: 4px 0;
+      font-size: 15px;
     }
+    .highlight { color: #2ecc71; }
+    .lowlight { color: #e74c3c; }
   </style>
 </head>
 <body>
-  <h1>Today's RKL Players</h1>
-  <div id="list" class="loading">Loading players...</div>
+<h1>RKL Daily Stats</h1>
+<div id="stats"></div>
 
-  <script>
-    const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
-    const rosterCsvUrl   = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
-    const WORKER_URL     = 'https://rkl-worker.tommyek600.workers.dev/';
+<script>
+const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
+const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
+const WORKER_URL = 'https://rkl-worker.tommyek600.workers.dev/';
 
-    function getTodayString() {
-      const now = new Date();
-      const est = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
-      if (est.getHours() < 7) est.setDate(est.getDate() - 1);
-      return `${est.getMonth() + 1}/${est.getDate()}`; // e.g., 7/10
-    }
+function getTodayString() {
+  const now = new Date();
+  const est = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+  if (est.getHours() < 7) est.setDate(est.getDate() - 1);
+  return `${est.getMonth() + 1}/${est.getDate()}`;
+}
 
-    function parseCSV(text) {
-      const lines = text.trim().split('\n');
-      const headers = lines[0].split(',').map(h => h.trim());
-      return lines.slice(1).map(line => {
-        const values = line.split(',').map(p => p.trim());
-        const obj = {};
-        headers.forEach((h, i) => obj[h] = values[i]);
-        return obj;
-      });
-    }
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.trim());
+  return lines.slice(1).map(line => {
+    const values = line.split(',').map(p => p.trim());
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = values[i]);
+    return obj;
+  });
+}
 
-    async function fetchKarma(userId) {
-      try {
-        const res = await fetch(`${WORKER_URL}?userId=${encodeURIComponent(userId)}`);
-        const data = await res.json();
-        const delta = data?.stats?.karmaDelta;
-        return typeof delta === 'number' ? delta : parseFloat(delta) || 0;
-      } catch {
-        return null;
-      }
-    }
+async function fetchKarma(userId) {
+  try {
+    const res = await fetch(`${WORKER_URL}?userId=${encodeURIComponent(userId)}`);
+    const data = await res.json();
+    return parseFloat(data?.stats?.karmaDelta || 0);
+  } catch {
+    return null;
+  }
+}
 
-    async function loadPlayers() {
-      const list = document.getElementById('list');
-      list.textContent = 'Loading players...';
+function toggleList(id) {
+  const el = document.getElementById(id);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
 
-      try {
-        const [scheduleRes, rosterRes] = await Promise.all([
-          axios.get(scheduleCsvUrl),
-          axios.get(rosterCsvUrl),
-        ]);
+async function loadStats() {
+  const stats = document.getElementById('stats');
+  stats.innerHTML = 'Loading...';
 
-        const today = getTodayString();
-        const games = parseCSV(scheduleRes.data).filter(g => g.Date?.trim() === today);
-        const teamsPlaying = new Set(games.flatMap(g => [g['Team 1'], g['Team 2']]));
+  const [scheduleRes, rosterRes] = await Promise.all([
+    axios.get(scheduleCsvUrl),
+    axios.get(rosterCsvUrl),
+  ]);
 
-        const roster = parseCSV(rosterRes.data);
-        const players = roster.filter(p =>
-          p['playing?']?.toLowerCase() === 'yes' && teamsPlaying.has(p.Team)
-        );
+  const today = getTodayString();
+  const games = parseCSV(scheduleRes.data).filter(g => g.Date?.trim() === today);
+  const teamsToday = new Set(games.flatMap(g => [g['Team 1'], g['Team 2']]));
+  const players = parseCSV(rosterRes.data).filter(p => p['playing?']?.toLowerCase() === 'yes' && teamsToday.has(p.Team));
 
-        if (players.length === 0) {
-          list.innerHTML = '<div class="error">No players marked as playing today.</div>';
-          return;
-        }
+  const karmaMap = new Map();
+  for (let p of players) {
+    const userId = p['User ID']?.trim();
+    if (!userId || userId.toLowerCase() === 'not found') continue;
+    const karma = await fetchKarma(userId);
+    if (karma !== null) karmaMap.set(p['User @'], { team: p.Team, score: karma });
+  }
 
-        const elements = await Promise.all(players.map(async p => {
-          const user = p['User @']?.trim() || 'Unknown';
-          const team = p.Team?.trim() || 'Team';
-          const userId = p['User ID']?.trim();
-          if (!userId || userId.toLowerCase() === 'not found') return null;
+  // Aggregate by team
+  const teamScores = {};
+  for (let [user, { team, score }] of karmaMap.entries()) {
+    teamScores[team] = (teamScores[team] || 0) + score;
+  }
 
-          const karma = await fetchKarma(userId);
-          if (karma === null) return null;
+  const teamSorted = Object.entries(teamScores).sort((a,b)=>b[1]-a[1]);
+  const playerSorted = Array.from(karmaMap.entries()).sort((a,b)=>b[1].score-a[1].score);
+  const teamValues = Object.values(teamScores);
+  const playerValues = Array.from(karmaMap.values()).map(p => p.score);
+  const teamMedian = teamValues.sort((a,b)=>a-b)[Math.floor(teamValues.length/2)] || 0;
+  const playerMedian = playerValues.sort((a,b)=>a-b)[Math.floor(playerValues.length/2)] || 0;
 
-          const rounded = Math.round(karma);
-          const sign = rounded > 0 ? '+' : '';
-          const color = rounded > 0 ? 'positive' : (rounded < 0 ? 'negative' : 'neutral');
-          return `<div class="player ${color}">@${user} (${team}): ${sign}${rounded}</div>`;
-        }));
+  const relScores = Array.from(karmaMap.entries()).map(([user, val]) => {
+    const rel = playerMedian ? (val.score / playerMedian).toFixed(2) : 0;
+    return { user, team: val.team, score: val.score, rel };
+  }).sort((a,b)=>b.rel-a.rel);
 
-        const filtered = elements.filter(Boolean);
-        list.innerHTML = filtered.length ? filtered.join('') : '<div class="error">No valid players found.</div>';
-      } catch (e) {
-        console.error('Error loading players:', e);
-        list.innerHTML = '<div class="error">Error loading player data.</div>';
-      }
-    }
+  function buildSection(title, list, key, type) {
+    const id = `${type}-${key}`;
+    return `
+      <div class="stat-section">
+        <div class="stat-title" onclick="toggleList('${id}')">
+          ${title}: <span class="highlight">${list[0][key] || list[0].user || list[0].team}</span>
+        </div>
+        <div class="stat-list" id="${id}">
+          ${list.map(x => `<div class="${type}">${type === 'player' ? `@${x.user} (${x.team}) - ${x.score}` : `${x[0]}: ${x[1].toFixed(1)}`}</div>`).join('')}
+        </div>
+      </div>`;
+  }
 
-    loadPlayers();
-  </script>
+  stats.innerHTML = `
+    ${buildSection('Top 3 Teams', teamSorted.slice(0,3), 1, 'team')}
+    ${buildSection('Bottom 3 Teams', teamSorted.slice(-3).reverse(), 1, 'team')}
+    ${buildSection('Top 5 Players', playerSorted.slice(0,5).map(([user, val]) => ({ user, ...val })), 'score', 'player')}
+    ${buildSection('Bottom 5 Players', playerSorted.slice(-5).reverse().map(([user, val]) => ({ user, ...val })), 'score', 'player')}
+    <div class="stat-section">League Median Team Score: <span class="highlight">${teamMedian.toFixed(1)}</span></div>
+    <div class="stat-section">League Median Player Score: <span class="highlight">${playerMedian.toFixed(1)}</span></div>
+    ${buildSection('Top 5 REL (Relative Performance)', relScores.slice(0,5), 'rel', 'player')}
+  `;
+}
+
+loadStats();
+</script>
 </body>
 </html>
