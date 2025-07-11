@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Today's RKL Players</title>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <style>
+    body {
+      background: #121212;
+      color: #fff;
+      font-family: sans-serif;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .player {
+      margin: 6px 0;
+      font-size: 16px;
+    }
+    .positive { color: #2ecc71; }
+    .negative { color: #e74c3c; }
+    .neutral  { color: #bdc3c7; }
+    .loading, .error {
+      text-align: center;
+      margin-top: 40px;
+      font-size: 16px;
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+  <h1>Today's RKL Players</h1>
+  <div id="list" class="loading">Loading players...</div>
+
+  <script>
+    const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
+    const rosterCsvUrl   = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
+    const WORKER_URL     = 'https://rkl-worker.tommyek600.workers.dev/';
+
+    function getTodayString() {
+      const now = new Date();
+      const est = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+      if (est.getHours() < 7) est.setDate(est.getDate() - 1);
+      return `${est.getMonth() + 1}/${est.getDate()}`; // e.g., 7/10
+    }
+
+    function parseCSV(text) {
+      const lines = text.trim().split('\n');
+      const headers = lines[0].split(',').map(h => h.trim());
+      return lines.slice(1).map(line => {
+        const values = line.split(',').map(p => p.trim());
+        const obj = {};
+        headers.forEach((h, i) => obj[h] = values[i]);
+        return obj;
+      });
+    }
+
+    async function fetchKarma(userId) {
+      try {
+        const res = await fetch(`${WORKER_URL}?userId=${encodeURIComponent(userId)}`);
+        const data = await res.json();
+        const delta = data?.stats?.karmaDelta;
+        return typeof delta === 'number' ? delta : parseFloat(delta) || 0;
+      } catch {
+        return null;
+      }
+    }
+
+    async function loadPlayers() {
+      const list = document.getElementById('list');
+      list.textContent = 'Loading players...';
+
+      try {
+        const [scheduleRes, rosterRes] = await Promise.all([
+          axios.get(scheduleCsvUrl),
+          axios.get(rosterCsvUrl),
+        ]);
+
+        const today = getTodayString();
+        const games = parseCSV(scheduleRes.data).filter(g => g.Date?.trim() === today);
+        const teamsPlaying = new Set(games.flatMap(g => [g['Team 1'], g['Team 2']]));
+
+        const roster = parseCSV(rosterRes.data);
+        const players = roster.filter(p =>
+          p['playing?']?.toLowerCase() === 'yes' && teamsPlaying.has(p.Team)
+        );
+
+        if (players.length === 0) {
+          list.innerHTML = '<div class="error">No players marked as playing today.</div>';
+          return;
+        }
+
+        const elements = await Promise.all(players.map(async p => {
+          const user = p['User @']?.trim() || 'Unknown';
+          const team = p.Team?.trim() || 'Team';
+          const userId = p['User ID']?.trim();
+          if (!userId || userId.toLowerCase() === 'not found') return null;
+
+          const karma = await fetchKarma(userId);
+          if (karma === null) return null;
+
+          const rounded = Math.round(karma);
+          const sign = rounded > 0 ? '+' : '';
+          const color = rounded > 0 ? 'positive' : (rounded < 0 ? 'negative' : 'neutral');
+          return `<div class="player ${color}">@${user} (${team}): ${sign}${rounded}</div>`;
+        }));
+
+        const filtered = elements.filter(Boolean);
+        list.innerHTML = filtered.length ? filtered.join('') : '<div class="error">No valid players found.</div>';
+      } catch (e) {
+        console.error('Error loading players:', e);
+        list.innerHTML = '<div class="error">Error loading player data.</div>';
+      }
+    }
+
+    loadPlayers();
+  </script>
+</body>
+</html>
