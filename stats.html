@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>RKL Daily Stats</title>
+  <title>RKL Daily Stats 2.0</title>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <style>
     body {
@@ -113,19 +113,26 @@ async function loadStats() {
   const playerMedian = playerValues.sort((a,b)=>a-b)[Math.floor(playerValues.length/2)] || 0;
 
   const relScores = Array.from(karmaMap.entries()).map(([user, val]) => {
-    const rel = playerMedian ? (val.score / playerMedian).toFixed(2) : 0;
-    return { user, team: val.team, score: val.score, rel };
+    const rel = playerMedian ? (val.score / playerMedian) : 0;
+    return { user, team: val.team, score: val.score, rel: rel.toFixed(2) };
   }).sort((a,b)=>b.rel-a.rel);
 
-  function buildSection(title, list, key, type) {
+  function buildSection(title, list, key, type, previewLabel) {
     const id = `${type}-${key}`;
+    const preview = type === 'player' ? `${list[0].user} (${list[0].team})` : `${list[0][0]}`;
     return `
       <div class="stat-section">
         <div class="stat-title" onclick="toggleList('${id}')">
-          ${title}: <span class="highlight">${list[0][key] || list[0].user || list[0].team}</span>
+          ${title}: <span class="highlight">${preview}</span>
         </div>
         <div class="stat-list" id="${id}">
-          ${list.map(x => `<div class="${type}">${type === 'player' ? `@${x.user} (${x.team}) - ${x.score}` : `${x[0]}: ${x[1].toFixed(1)}`}</div>`).join('')}
+          ${list.map(x => {
+            if (type === 'player') {
+              return `<div class="player">${x.user} (${x.team}) - ${key === 'rel' ? x.rel : x.score.toFixed(1)}</div>`;
+            } else {
+              return `<div class="team">${x[0]}: ${x[1].toFixed(1)}</div>`;
+            }
+          }).join('')}
         </div>
       </div>`;
   }
