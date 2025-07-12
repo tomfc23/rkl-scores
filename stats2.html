@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RKL Live Stats 2</title>
+  <title>RKL Live Stats</title>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <style>
     * {
@@ -240,11 +240,11 @@ async function loadStats() {
     ${buildSection('League Median Team Score', [["Median", teamMedian]], 1, 'team')}
     ${buildSection('League Median Player Score', [["Median", playerMedian]], 1, 'team')}
     ${buildSection('Top 5 REL (Relative Performance)', relScores.slice(0,5), 'rel', 'player')}
-    ${buildSection('Top 5 Karma Day Rank', top5Ranks, 'rank', 'player')}
-    ${buildSection('Bottom 5 Karma Day Rank', bottom5Ranks, 'rank', 'player')}
+    ${buildSection('Top 5 User Karma Rank', top5Ranks, 'rank', 'player')}
+    ${buildSection('Bottom 5 User Karma Rank', bottom5Ranks, 'rank', 'player')}
     <div class="stat-section">
       <div class="stat-title">
-        Total Players Ranked ≤ 1000 Today: <span class="highlight">${rankEligibleCount}</span>
+        Total Players Ranked Today: <span class="highlight">${rankEligibleCount}</span>
       </div>
     </div>
   `;
