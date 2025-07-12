@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RKL Live Stats</title>
+  <title>RKL Live Stats 2</title>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <style>
     * {
@@ -124,7 +124,7 @@ async function fetchKarma(userId) {
     const data = await res.json();
     return {
       karmaDelta: parseFloat(data?.stats?.karmaDelta || 0),
-      karmaRank: parseInt(data?.stats?.karmaRank || -1),
+      karmaDayRank: parseInt(data?.stats?.karmaDayRank || -1),
     };
   } catch {
     return null;
@@ -173,11 +173,11 @@ async function loadStats() {
         if (!userId || userId.toLowerCase() === 'not found') return;
         const data = await fetchKarma(userId);
         if (data !== null) {
-          const { karmaDelta, karmaRank } = data;
-          karmaMap.set(userAt, { team: p.Team, score: karmaDelta, rank: karmaRank });
-          if (karmaRank > 0) {
-            rankEntries.push({ user: userAt, team: p.Team, rank: karmaRank });
-            if (karmaRank <= 1000) rankEligibleCount++;
+          const { karmaDelta, karmaDayRank } = data;
+          karmaMap.set(userAt, { team: p.Team, score: karmaDelta, rank: karmaDayRank });
+          if (karmaDayRank > 0) {
+            rankEntries.push({ user: userAt, team: p.Team, rank: karmaDayRank });
+            if (karmaDayRank <= 1000) rankEligibleCount++;
           }
           loaded++;
         }
@@ -212,7 +212,7 @@ async function loadStats() {
   function buildSection(title, list, key, type) {
     const id = `${type}-${key}-${title.replace(/\s+/g,'-')}`;
     const preview = type === 'player'
-      ? `${list[0].user} (${list[0].team}) - ${key === 'rel' ? list[0].rel : list[0][key]?.toFixed?.(1) ?? list[0][key]}`
+      ? `${list[0].user} (${list[0].team}) - ${key === 'rel' ? list[0].rel : list[0][key]}`
       : `${list[0][0]} - ${list[0][1].toFixed(1)}`;
     return `
       <div class="stat-section">
@@ -222,7 +222,7 @@ async function loadStats() {
         <div class="stat-list" id="${id}">
           ${list.map(x => {
             if (type === 'player') {
-              return `<div class="player">${x.user} (${x.team}) - ${key === 'rel' ? x.rel : x[key]}</div>`;
+              return `<div class="player">${x.user} (${x.team}) - ${x[key]}</div>`;
             } else {
               return `<div class="team">${x[0]}: ${x[1].toFixed(1)}</div>`;
             }
@@ -240,11 +240,11 @@ async function loadStats() {
     ${buildSection('League Median Team Score', [["Median", teamMedian]], 1, 'team')}
     ${buildSection('League Median Player Score', [["Median", playerMedian]], 1, 'team')}
     ${buildSection('Top 5 REL (Relative Performance)', relScores.slice(0,5), 'rel', 'player')}
-    ${buildSection('Top 5 Karma Rank', top5Ranks, 'rank', 'player')}
-    ${buildSection('Bottom 5 Karma Rank', bottom5Ranks, 'rank', 'player')}
+    ${buildSection('Top 5 Karma Day Rank', top5Ranks, 'rank', 'player')}
+    ${buildSection('Bottom 5 Karma Day Rank', bottom5Ranks, 'rank', 'player')}
     <div class="stat-section">
       <div class="stat-title">
-        Total Players Ranked ≤ 1000: <span class="highlight">${rankEligibleCount}</span>
+        Total Players Ranked ≤ 1000 Today: <span class="highlight">${rankEligibleCount}</span>
       </div>
     </div>
   `;
