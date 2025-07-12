@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RKL Live Stats</title>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: #1a1a1a;
+      color: #ffffff;
+      min-height: 100vh;
+      padding: 20px;
+      max-width: 700px;
+      margin: auto;
+    }
+
+    .home-link {
+      display: block;
+      text-align: center;
+      margin-bottom: 20px;
+      font-size: 14px;
+      color: #ffffff;
+      text-decoration: underline;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 28px;
+      margin-bottom: 20px;
+      color: #ffffff;
+    }
+
+    p {
+      text-align: center;
+    }
+
+    .loading-bar {
+      text-align: center;
+      font-size: 14px;
+      color: #ffffff;
+      margin-bottom: 12px;
+    }
+
+    .stat-section {
+      margin: 40px 0;
+      border-radius: 12px;
+      background-color: #2a2a2a;
+      box-shadow: 0 4px 10px rgba(0, 255, 136, 0.1);
+    }
+
+    .stat-title {
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 14px 20px;
+      border-bottom: 1px solid #ffffff;
+      background-color: #1f1f1f;
+      transition: background-color 0.2s;
+    }
+
+    .stat-title:hover {
+      background-color: #3e3e3e;
+    }
+
+    .stat-list {
+      display: none;
+      padding: 14px 20px 20px;
+    }
+
+    .player, .team {
+      margin: 6px 0;
+      font-size: 14px;
+      color: #ccc;
+    }
+
+    .highlight {
+      color: #ffffff;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+
+<h1>RKL Live Stats</h1>
+<p>Press twice/once to expand a stat leaderboard</p>
+<div class="loading-bar" id="loading-bar"></div>
+<div id="stats"></div>
+<a class="home-link" href="index.html">← Home</a>
+
+<script>
+const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
+const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
+const WORKER_URL = 'https://rkl-worker.tommyek600.workers.dev/';
+
+function getTodayString() {
+  const now = new Date();
+  const est = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+  if (est.getHours() < 7) est.setDate(est.getDate() - 1);
+  return `${est.getMonth() + 1}/${est.getDate()}`;
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.trim());
+  return lines.slice(1).map(line => {
+    const values = line.split(',').map(p => p.trim());
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = values[i]);
+    return obj;
+  });
+}
+
+async function fetchKarma(userId) {
+  try {
+    const res = await fetch(`${WORKER_URL}?userId=${encodeURIComponent(userId)}`);
+    const data = await res.json();
+    return {
+      karmaDelta: parseFloat(data?.stats?.karmaDelta || 0),
+      karmaRank: parseInt(data?.stats?.karmaRank || -1),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function toggleList(id) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  }
+}
+
+document.addEventListener('click', function(e) {
+  if (e.target.classList.contains('stat-title')) {
+    toggleList(e.target.getAttribute('data-target'));
+  }
+});
+
+async function loadStats() {
+  const stats = document.getElementById('stats');
+  const loadingBar = document.getElementById('loading-bar');
+  stats.innerHTML = '';
+  loadingBar.textContent = 'Loading...';
+
+  const [scheduleRes, rosterRes] = await Promise.all([
+    axios.get(scheduleCsvUrl),
+    axios.get(rosterCsvUrl),
+  ]);
+
+  const today = getTodayString();
+  const games = parseCSV(scheduleRes.data).filter(g => g.Date?.trim() === today);
+  const teamsToday = new Set(games.flatMap(g => [g['Team 1'], g['Team 2']]));
+  const players = parseCSV(rosterRes.data).filter(p => p['playing?']?.toLowerCase() === 'yes' && teamsToday.has(p.Team));
+
+  const karmaMap = new Map();
+  const rankEntries = [];
+  let rankEligibleCount = 0;
+  let loaded = 0;
+
+  async function fetchInBatches(items, batchSize) {
+    for (let i = 0; i < items.length; i += batchSize) {
+      await Promise.all(items.slice(i, i + batchSize).map(async p => {
+        const userId = p['User ID']?.trim();
+        const userAt = p['User @']?.replace(/^@/, '');
+        if (!userId || userId.toLowerCase() === 'not found') return;
+        const data = await fetchKarma(userId);
+        if (data !== null) {
+          const { karmaDelta, karmaRank } = data;
+          karmaMap.set(userAt, { team: p.Team, score: karmaDelta, rank: karmaRank });
+          if (karmaRank > 0) {
+            rankEntries.push({ user: userAt, team: p.Team, rank: karmaRank });
+            if (karmaRank <= 1000) rankEligibleCount++;
+          }
+          loaded++;
+        }
+        loadingBar.textContent = `Loaded ${loaded} out of ${players.length} players...`;
+      }));
+    }
+  }
+
+  await fetchInBatches(players, 10);
+
+  const teamScores = {};
+  for (let [user, { team, score }] of karmaMap.entries()) {
+    teamScores[team] = (teamScores[team] || 0) + score;
+  }
+
+  const teamSorted = Object.entries(teamScores).sort((a,b)=>b[1]-a[1]);
+  const playerSorted = Array.from(karmaMap.entries()).sort((a,b)=>b[1].score-a[1].score);
+  const teamValues = Object.values(teamScores);
+  const playerValues = Array.from(karmaMap.values()).map(p => p.score);
+  const teamMedian = teamValues.sort((a,b)=>a-b)[Math.floor(teamValues.length/2)] || 0;
+  const playerMedian = playerValues.sort((a,b)=>a-b)[Math.floor(playerValues.length/2)] || 0;
+
+  const relScores = Array.from(karmaMap.entries()).map(([user, val]) => {
+    const rel = playerMedian ? (val.score / playerMedian) : 0;
+    return { user, team: val.team, score: val.score, rel: rel.toFixed(2) };
+  }).sort((a,b)=>b.rel-a.rel);
+
+  const rankSorted = rankEntries.sort((a, b) => a.rank - b.rank);
+  const top5Ranks = rankSorted.slice(0, 5);
+  const bottom5Ranks = rankSorted.slice(-5).reverse();
+
+  function buildSection(title, list, key, type) {
+    const id = `${type}-${key}-${title.replace(/\s+/g,'-')}`;
+    const preview = type === 'player'
+      ? `${list[0].user} (${list[0].team}) - ${key === 'rel' ? list[0].rel : list[0][key]?.toFixed?.(1) ?? list[0][key]}`
+      : `${list[0][0]} - ${list[0][1].toFixed(1)}`;
+    return `
+      <div class="stat-section">
+        <div class="stat-title" data-target="${id}">
+          ${title}: <span class="highlight">${preview}</span>
+        </div>
+        <div class="stat-list" id="${id}">
+          ${list.map(x => {
+            if (type === 'player') {
+              return `<div class="player">${x.user} (${x.team}) - ${key === 'rel' ? x.rel : x[key]}</div>`;
+            } else {
+              return `<div class="team">${x[0]}: ${x[1].toFixed(1)}</div>`;
+            }
+          }).join('')}
+        </div>
+      </div>`;
+  }
+
+  loadingBar.textContent = '';
+  stats.innerHTML = `
+    ${buildSection('Top 3 Teams', teamSorted.slice(0,3), 1, 'team')}
+    ${buildSection('Bottom 3 Teams', teamSorted.slice(-3).reverse(), 1, 'team')}
+    ${buildSection('Top 5 Players', playerSorted.slice(0,5).map(([user, val]) => ({ user, ...val })), 'score', 'player')}
+    ${buildSection('Bottom 5 Players', playerSorted.slice(-5).reverse().map(([user, val]) => ({ user, ...val })), 'score', 'player')}
+    ${buildSection('League Median Team Score', [["Median", teamMedian]], 1, 'team')}
+    ${buildSection('League Median Player Score', [["Median", playerMedian]], 1, 'team')}
+    ${buildSection('Top 5 REL (Relative Performance)', relScores.slice(0,5), 'rel', 'player')}
+    ${buildSection('Top 5 Karma Rank', top5Ranks, 'rank', 'player')}
+    ${buildSection('Bottom 5 Karma Rank', bottom5Ranks, 'rank', 'player')}
+    <div class="stat-section">
+      <div class="stat-title">
+        Total Players Ranked ≤ 1000: <span class="highlight">${rankEligibleCount}</span>
+      </div>
+    </div>
+  `;
+}
+
+loadStats();
+</script>
+</body>
+</html>
