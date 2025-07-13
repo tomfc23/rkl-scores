@@ -92,13 +92,24 @@
 <h1>RKL Live Stats</h1>
 <p>Press twice/once to expand a stat leaderboard</p>
 <div class="loading-bar" id="loading-bar"></div>
+  <!-- Player Search -->
+<div style="margin-bottom: 30px;">
+  <input id="playerSearch" type="text" placeholder="Search player..." style="width: 100%; padding: 12px; font-size: 16px; border-radius: 8px; border: none; background-color: #2a2a2a; color: white; margin-bottom: 12px;" />
+  <div id="playerResult" style="display: none; background-color: #2a2a2a; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0, 255, 136, 0.1);"></div>
+</div>
 <div id="stats"></div>
+
+
+
 <a class="home-link" href="index.html">← Home</a>
 
 <script>
 const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
 const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
 const WORKER_URL = 'https://rkl-worker.tommyek600.workers.dev/';
+
+let fullPlayerMap = new Map();
+let playerMedian = 0;
 
 function getTodayString() {
   const now = new Date();
@@ -131,23 +142,48 @@ async function fetchKarma(userId) {
   }
 }
 
-function toggleList(id) {
-  const el = document.getElementById(id);
-  if (el) {
-    el.style.display = el.style.display === 'none' ? 'block' : 'none';
-  }
-}
+document.getElementById('playerSearch').addEventListener('input', e => {
+  const val = e.target.value.trim().toLowerCase();
+  const resDiv = document.getElementById('playerResult');
 
-document.addEventListener('click', function(e) {
-  if (e.target.classList.contains('stat-title')) {
-    toggleList(e.target.getAttribute('data-target'));
+  if (!val || fullPlayerMap.size === 0) {
+    resDiv.style.display = 'none';
+    resDiv.innerHTML = '';
+    return;
   }
+
+  const found = Array.from(fullPlayerMap.entries()).find(([user]) => user.toLowerCase().includes(val));
+  if (!found) {
+    resDiv.style.display = 'none';
+    resDiv.innerHTML = '';
+    return;
+  }
+
+  const [username, data] = found;
+  const aboveMedian = (data.score - playerMedian).toFixed(2);
+  const relScore = playerMedian ? (data.score / playerMedian).toFixed(2) : '0.00';
+
+  resDiv.innerHTML = `
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <div>
+        <div style="font-size: 20px; font-weight: 600;">${username}</div>
+        <div style="font-size: 14px; color: #aaa;">${data.team}</div>
+      </div>
+      <div style="background-color: #333; padding: 6px 12px; border-radius: 6px; font-size: 16px;">${data.score.toFixed(2)}</div>
+    </div>
+    <div style="margin-top: 10px; font-size: 14px;">
+      Karma Rank: <span class="highlight">${data.rank > 0 ? data.rank : 'N/A'}</span><br>
+      Points Above Median: <span class="highlight">${aboveMedian}</span><br>
+      REL Score: <span class="highlight">${relScore}</span>
+    </div>
+  `;
+  resDiv.style.display = 'block';
 });
 
-async function loadStats() {
+window.addEventListener('DOMContentLoaded', async () => {
   const stats = document.getElementById('stats');
   const loadingBar = document.getElementById('loading-bar');
-  stats.innerHTML = '';
+
   loadingBar.textContent = 'Loading...';
 
   const [scheduleRes, rosterRes] = await Promise.all([
@@ -165,29 +201,26 @@ async function loadStats() {
   let rankEligibleCount = 0;
   let loaded = 0;
 
-  async function fetchInBatches(items, batchSize) {
-    for (let i = 0; i < items.length; i += batchSize) {
-      await Promise.all(items.slice(i, i + batchSize).map(async p => {
-        const userId = p['User ID']?.trim();
-        const userAt = p['User @']?.replace(/^@/, '');
-        if (!userId || userId.toLowerCase() === 'not found') return;
-        const data = await fetchKarma(userId);
-        if (data !== null) {
-          const { karmaDelta, karmaDayRank } = data;
-          karmaMap.set(userAt, { team: p.Team, score: karmaDelta, rank: karmaDayRank });
-          if (karmaDayRank > 0) {
-            rankEntries.push({ user: userAt, team: p.Team, rank: karmaDayRank });
-            if (karmaDayRank <= 1000) rankEligibleCount++;
-          }
-          loaded++;
+  for (let i = 0; i < players.length; i += 10) {
+    await Promise.all(players.slice(i, i + 10).map(async p => {
+      const userId = p['User ID']?.trim();
+      const userAt = p['User @']?.replace(/^@/, '');
+      if (!userId || userId.toLowerCase() === 'not found') return;
+      const data = await fetchKarma(userId);
+      if (data !== null) {
+        const { karmaDelta, karmaDayRank } = data;
+        karmaMap.set(userAt, { team: p.Team, score: karmaDelta, rank: karmaDayRank });
+        if (karmaDayRank > 0) {
+          rankEntries.push({ user: userAt, team: p.Team, rank: karmaDayRank });
+          if (karmaDayRank <= 1000) rankEligibleCount++;
         }
+        loaded++;
         loadingBar.textContent = `Loaded ${loaded} out of ${players.length} players...`;
-      }));
-    }
+      }
+    }));
   }
 
-  await fetchInBatches(players, 10);
-
+  fullPlayerMap = karmaMap;
   const teamScores = {};
   for (let [user, { team, score }] of karmaMap.entries()) {
     teamScores[team] = (teamScores[team] || 0) + score;
@@ -198,7 +231,7 @@ async function loadStats() {
   const teamValues = Object.values(teamScores);
   const playerValues = Array.from(karmaMap.values()).map(p => p.score);
   const teamMedian = teamValues.sort((a,b)=>a-b)[Math.floor(teamValues.length/2)] || 0;
-  const playerMedian = playerValues.sort((a,b)=>a-b)[Math.floor(playerValues.length/2)] || 0;
+  playerMedian = playerValues.sort((a,b)=>a-b)[Math.floor(playerValues.length/2)] || 0;
 
   const relScores = Array.from(karmaMap.entries()).map(([user, val]) => {
     const rel = playerMedian ? (val.score / playerMedian) : 0;
@@ -248,9 +281,7 @@ async function loadStats() {
       </div>
     </div>
   `;
-}
-
-loadStats();
+});
 </script>
 </body>
 </html>
