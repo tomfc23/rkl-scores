@@ -3,234 +3,285 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RKL Live Scores</title>
+  <title>RKL Live Stats</title>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
       background-color: #1a1a1a;
       color: #ffffff;
-      margin: 0;
+      min-height: 100vh;
       padding: 20px;
-    }
-
-    h1 {
-      text-align: center;
-      font-size: 24px;
-      margin-bottom: 16px;
-    }
-
-    .loading {
-      text-align: center;
-      font-size: 14px;
-      color: #ffffff;
-      margin-bottom: 16px;
-    }
-
-    .game-container {
-      background-color: #2a2a2a;
-      border-radius: 12px;
-      margin-bottom: 20px;
-      overflow: hidden;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-    }
-
-    .game-header {
-      padding: 14px 20px;
-      background-color: #1f1f1f;
-      border-bottom: 1px solid #333;
-      cursor: pointer;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-weight: bold;
-      font-size: 16px;
-    }
-
-    .game-body {
-      display: none;
-      padding: 20px;
-    }
-
-    .team-roster {
-      margin-bottom: 24px;
-    }
-
-    .roster-title {
-      font-weight: bold;
-      margin-bottom: 8px;
-      color: #ccc;
-    }
-
-    .player-row {
-      padding: 6px 12px;
-      background-color: #333;
-      border-radius: 6px;
-      margin-bottom: 6px;
-      font-size: 14px;
+      max-width: 700px;
+      margin: auto;
     }
 
     .home-link {
       display: block;
       text-align: center;
-      margin-top: 30px;
+      margin-bottom: 20px;
       font-size: 14px;
       color: #ffffff;
       text-decoration: underline;
     }
+
+    h1 {
+      text-align: center;
+      font-size: 28px;
+      margin-bottom: 20px;
+      color: #ffffff;
+    }
+
+    p {
+      text-align: center;
+    }
+
+    .loading-bar {
+      text-align: center;
+      font-size: 14px;
+      color: #ffffff;
+      margin-bottom: 12px;
+    }
+
+    .stat-section {
+      margin: 40px 0;
+      border-radius: 12px;
+      background-color: #2a2a2a;
+      box-shadow: 0 4px 10px rgba(0, 255, 136, 0.1);
+    }
+
+    .stat-title {
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 14px 20px;
+      border-bottom: 1px solid #ffffff;
+      background-color: #1f1f1f;
+      transition: background-color 0.2s;
+    }
+
+    .stat-title:hover {
+      background-color: #3e3e3e;
+    }
+
+    .stat-list {
+      display: none;
+      padding: 14px 20px 20px;
+    }
+
+    .player, .team {
+      margin: 6px 0;
+      font-size: 14px;
+      color: #ccc;
+    }
+
+    .highlight {
+      color: #ffffff;
+      font-weight: 500;
+    }
   </style>
 </head>
 <body>
-  <h1>RKL Live Scores</h1>
-  <div class="loading" id="loading-indicator">Loading...</div>
-  <div id="games-container"></div>
-  <a href="index.html" class="home-link">← Home</a>
 
-  <script>
-    const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
-    const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
-    const WORKER_URL = 'https://rkl-worker.tommyek600.workers.dev/';
-    const karmaCache = new Map();
+<h1>RKL Live Stats</h1>
+<p>Press twice/once to expand a stat leaderboard</p>
+<div class="loading-bar" id="loading-bar"></div>
+  <!-- Player Search -->
+<div style="margin-bottom: 30px;">
+  <input id="playerSearch" type="text" placeholder="Search player..." style="width: 100%; padding: 12px; font-size: 16px; border-radius: 8px; border: none; background-color: #2a2a2a; color: white; margin-bottom: 12px;" />
+  <div id="playerResult" style="display: none; background-color: #2a2a2a; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0, 255, 136, 0.1);"></div>
+</div>
+<div id="stats"></div>
 
-    function getTodayString() {
-      const now = new Date();
-      const est = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
-      if (est.getHours() < 7) est.setDate(est.getDate() - 1);
-      return `${est.getMonth() + 1}/${est.getDate()}`;
-    }
 
-    function parseCSV(text) {
-      const lines = text.trim().split('\n');
-      const headers = lines[0].split(',').map(h => h.trim());
-      return lines.slice(1).map(line => {
-        const values = line.split(',').map(p => p.trim());
-        const obj = {};
-        headers.forEach((h, i) => obj[h] = values[i]);
-        return obj;
-      });
-    }
 
-    async function fetchKarma(userId) {
-      if (karmaCache.has(userId)) return karmaCache.get(userId);
-      try {
-        const res = await fetch(`${WORKER_URL}?userId=${encodeURIComponent(userId)}`);
-        const data = await res.json();
-        const val = parseFloat(data?.stats?.karmaDelta || 0);
-        karmaCache.set(userId, val);
-        return val;
-      } catch {
-        return 0;
-      }
-    }
+<a class="home-link" href="index.html">← Home</a>
 
-    async function limitedMap(array, limit, asyncFn, onProgress) {
-      const results = [];
-      let index = 0;
-      const executing = new Set();
+<script>
+const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
+const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
+const WORKER_URL = 'https://rkl-worker.tommyek600.workers.dev/';
 
-      for (const item of array) {
-        const p = asyncFn(item).then(res => {
-          results.push(res);
-          if (onProgress) onProgress(++index, array.length);
-        });
-        executing.add(p);
-        p.finally(() => executing.delete(p));
-        if (executing.size >= limit) await Promise.race(executing);
-      }
-      await Promise.all(executing);
-      return results;
-    }
+let fullPlayerMap = new Map();
+let playerMedian = 0;
 
-    async function processTeam(players, updateProgress) {
-      let teamTotal = 0;
-      const rows = await limitedMap(players, 10, async p => {
-        const userId = p['User ID']?.trim();
-        const userAt = p['User @']?.trim() || 'Unknown';
-        const role = (p['role'] || '').toLowerCase();
-        const deduction = parseFloat(p['deductions'] || 0);
+function getTodayString() {
+  const now = new Date();
+  const est = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+  if (est.getHours() < 7) est.setDate(est.getDate() - 1);
+  return `${est.getMonth() + 1}/${est.getDate()}`;
+}
 
-        if (!userId || userId.toLowerCase() === 'not found') return `${userAt}: missing`;
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.trim());
+  return lines.slice(1).map(line => {
+    const values = line.split(',').map(p => p.trim());
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = values[i]);
+    return obj;
+  });
+}
 
-        const base = await fetchKarma(userId);
-        const adjusted = base - deduction;
-        const boosted = role === 'captain' ? adjusted * 1.5 : adjusted;
+async function fetchKarma(userId) {
+  try {
+    const res = await fetch(`${WORKER_URL}?userId=${encodeURIComponent(userId)}`);
+    const data = await res.json();
+    return {
+      karmaDelta: parseFloat(data?.stats?.karmaDelta || 0),
+      karmaDayRank: parseInt(data?.stats?.karmaDayRank || -1),
+    };
+  } catch {
+    return null;
+  }
+}
 
-        teamTotal += boosted;
+document.getElementById('playerSearch').addEventListener('input', e => {
+  const val = e.target.value.trim().toLowerCase();
+  const resDiv = document.getElementById('playerResult');
 
-        const rounded = Math.round(adjusted);
-        const label = role === 'captain'
-          ? `${userAt} (c): ${rounded} → ${Math.round(boosted)}`
-          : `${userAt}: ${rounded}`;
+  if (!val || fullPlayerMap.size === 0) {
+    resDiv.style.display = 'none';
+    resDiv.innerHTML = '';
+    return;
+  }
 
-        return `<div class="player-row">${label}</div>`;
-      }, updateProgress);
-      return { rows, total: Math.round(teamTotal) };
-    }
+  const found = Array.from(fullPlayerMap.entries()).find(([user]) => user.toLowerCase().includes(val));
+  if (!found) {
+    resDiv.style.display = 'none';
+    resDiv.innerHTML = '';
+    return;
+  }
 
-    function createGameHTML(team1, team2, t1Total, t2Total, t1Rows, t2Rows, index) {
-      const id = `game-${index}`;
-      return `
-        <div class="game-container">
-          <div class="game-header" onclick="document.getElementById('${id}').style.display = 
-            document.getElementById('${id}').style.display === 'none' ? 'block' : 'none'">
-            ${team1} (${t1Total}) vs ${team2} (${t2Total})
-          </div>
-          <div class="game-body" id="${id}">
-            <div class="team-roster">
-              <div class="roster-title">${team1}</div>
-              ${t1Rows.join('')}
-            </div>
-            <div class="team-roster">
-              <div class="roster-title">${team2}</div>
-              ${t2Rows.join('')}
-            </div>
-          </div>
-        </div>`;
-    }
+  const [username, data] = found;
+  const aboveMedian = (data.score - playerMedian).toFixed(2);
+  const relScore = playerMedian ? (data.score / playerMedian).toFixed(2) : '0.00';
 
-    async function loadGames() {
-      const loading = document.getElementById('loading-indicator');
-      const container = document.getElementById('games-container');
+  resDiv.innerHTML = `
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <div>
+        <div style="font-size: 20px; font-weight: 600;">${username}</div>
+        <div style="font-size: 14px; color: #aaa;">${data.team}</div>
+      </div>
+      <div style="background-color: #333; padding: 6px 12px; border-radius: 6px; font-size: 16px;">${data.score.toFixed(2)}</div>
+    </div>
+    <div style="margin-top: 10px; font-size: 14px;">
+      Karma Rank: <span class="highlight">${data.rank > 0 ? data.rank : 'N/A'}</span><br>
+      Points Above Median: <span class="highlight">${aboveMedian}</span><br>
+      REL Score: <span class="highlight">${relScore}</span>
+    </div>
+  `;
+  resDiv.style.display = 'block';
+});
 
-      try {
-        const [scheduleRes, rosterRes] = await Promise.all([
-          axios.get(scheduleCsvUrl),
-          axios.get(rosterCsvUrl)
-        ]);
+window.addEventListener('DOMContentLoaded', async () => {
+  const stats = document.getElementById('stats');
+  const loadingBar = document.getElementById('loading-bar');
 
-        const today = getTodayString();
-        const games = parseCSV(scheduleRes.data).filter(g => g.Date?.trim() === today);
-        const players = parseCSV(rosterRes.data).filter(p => p['playing?']?.toLowerCase() === 'yes');
+  loadingBar.textContent = 'Loading...';
 
-        let loaded = 0;
-        const total = players.length;
-        const updateProgress = () => {
-          loading.textContent = `Loaded ${loaded++} out of ${total} players...`;
-        };
+  const [scheduleRes, rosterRes] = await Promise.all([
+    axios.get(scheduleCsvUrl),
+    axios.get(rosterCsvUrl),
+  ]);
 
-        for (let i = 0; i < games.length; i++) {
-          const game = games[i];
-          const t1 = game['Team 1'];
-          const t2 = game['Team 2'];
-          const t1Players = players.filter(p => p.Team === t1);
-          const t2Players = players.filter(p => p.Team === t2);
+  const today = getTodayString();
+  const games = parseCSV(scheduleRes.data).filter(g => g.Date?.trim() === today);
+  const teamsToday = new Set(games.flatMap(g => [g['Team 1'], g['Team 2']]));
+  const players = parseCSV(rosterRes.data).filter(p => p['playing?']?.toLowerCase() === 'yes' && teamsToday.has(p.Team));
 
-          const [t1Data, t2Data] = await Promise.all([
-            processTeam(t1Players, updateProgress),
-            processTeam(t2Players, updateProgress)
-          ]);
+  const karmaMap = new Map();
+  const rankEntries = [];
+  let rankEligibleCount = 0;
+  let loaded = 0;
 
-          container.innerHTML += createGameHTML(t1, t2, t1Data.total, t2Data.total, t1Data.rows, t2Data.rows, i);
+  for (let i = 0; i < players.length; i += 10) {
+    await Promise.all(players.slice(i, i + 10).map(async p => {
+      const userId = p['User ID']?.trim();
+      const userAt = p['User @']?.replace(/^@/, '');
+      if (!userId || userId.toLowerCase() === 'not found') return;
+      const data = await fetchKarma(userId);
+      if (data !== null) {
+        const { karmaDelta, karmaDayRank } = data;
+        karmaMap.set(userAt, { team: p.Team, score: karmaDelta, rank: karmaDayRank });
+        if (karmaDayRank > 0) {
+          rankEntries.push({ user: userAt, team: p.Team, rank: karmaDayRank });
+          if (karmaDayRank <= 1000) rankEligibleCount++;
         }
-
-        loading.textContent = 'Done.';
-      } catch (e) {
-        loading.textContent = 'Failed to load game data.';
-        console.error(e);
+        loaded++;
+        loadingBar.textContent = `Loaded ${loaded} out of ${players.length} players...`;
       }
-    }
+    }));
+  }
 
-    loadGames();
-  </script>
+  fullPlayerMap = karmaMap;
+  const teamScores = {};
+  for (let [user, { team, score }] of karmaMap.entries()) {
+    teamScores[team] = (teamScores[team] || 0) + score;
+  }
+
+  const teamSorted = Object.entries(teamScores).sort((a,b)=>b[1]-a[1]);
+  const playerSorted = Array.from(karmaMap.entries()).sort((a,b)=>b[1].score-a[1].score);
+  const teamValues = Object.values(teamScores);
+  const playerValues = Array.from(karmaMap.values()).map(p => p.score);
+  const teamMedian = teamValues.sort((a,b)=>a-b)[Math.floor(teamValues.length/2)] || 0;
+  playerMedian = playerValues.sort((a,b)=>a-b)[Math.floor(playerValues.length/2)] || 0;
+
+  const relScores = Array.from(karmaMap.entries()).map(([user, val]) => {
+    const rel = playerMedian ? (val.score / playerMedian) : 0;
+    return { user, team: val.team, score: val.score, rel: rel.toFixed(2) };
+  }).sort((a,b)=>b.rel-a.rel);
+
+  const rankSorted = rankEntries.sort((a, b) => a.rank - b.rank);
+  const top5Ranks = rankSorted.slice(0, 5);
+  const bottom5Ranks = rankSorted.slice(-5).reverse();
+
+  function buildSection(title, list, key, type) {
+    const id = `${type}-${key}-${title.replace(/\s+/g,'-')}`;
+    const preview = type === 'player'
+      ? `${list[0].user} (${list[0].team}) - ${key === 'rel' ? list[0].rel : list[0][key]}`
+      : `${list[0][0]} - ${list[0][1].toFixed(1)}`;
+    return `
+      <div class="stat-section">
+        <div class="stat-title" data-target="${id}">
+          ${title}: <span class="highlight">${preview}</span>
+        </div>
+        <div class="stat-list" id="${id}">
+          ${list.map(x => {
+            if (type === 'player') {
+              return `<div class="player">${x.user} (${x.team}) - ${x[key]}</div>`;
+            } else {
+              return `<div class="team">${x[0]}: ${x[1].toFixed(1)}</div>`;
+            }
+          }).join('')}
+        </div>
+      </div>`;
+  }
+
+  loadingBar.textContent = '';
+  stats.innerHTML = `
+    ${buildSection('Top 3 Teams', teamSorted.slice(0,3), 1, 'team')}
+    ${buildSection('Bottom 3 Teams', teamSorted.slice(-3).reverse(), 1, 'team')}
+    ${buildSection('Top 5 Players', playerSorted.slice(0,5).map(([user, val]) => ({ user, ...val })), 'score', 'player')}
+    ${buildSection('Bottom 5 Players', playerSorted.slice(-5).reverse().map(([user, val]) => ({ user, ...val })), 'score', 'player')}
+    ${buildSection('League Median Team Score', [["Median", teamMedian]], 1, 'team')}
+    ${buildSection('League Median Player Score', [["Median", playerMedian]], 1, 'team')}
+    ${buildSection('Top 5 REL (Relative Performance)', relScores.slice(0,5), 'rel', 'player')}
+    ${buildSection('Top 5 User Karma Rank', top5Ranks, 'rank', 'player')}
+    ${buildSection('Bottom 5 User Karma Rank', bottom5Ranks, 'rank', 'player')}
+    <div class="stat-section">
+      <div class="stat-title">
+        Total Players Ranked Today: <span class="highlight">${rankEligibleCount}</span>
+      </div>
+    </div>
+  `;
+});
+</script>
 </body>
 </html>
