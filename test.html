@@ -1,423 +1,113 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RKL Live Stats</title>
-  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <meta charset="UTF-8">
+  <title>RKL Live Stats - Poll Split</title>
   <style>
-   :root {
-      --bg-color: #121212;
-      --card-color: #1e1e1e;
-      --accent-color: #00ff88;
-      --text-color: #ffffff;
-      --text-muted: #aaa;
-    }
-
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
     body {
-      font-family: 'Segoe UI', Roboto, sans-serif;
-      background-color: var(--bg-color);
-      color: var(--text-color);
-      min-height: 100vh;
-      padding: 24px;
-      max-width: 760px;
-      margin: auto;
-    }
-
-    h1 {
-      text-align: center;
-      font-size: 32px;
-      margin-bottom: 16px;
-    }
-
-    p {
-      text-align: center;
-      font-size: 14px;
-      color: var(--text-muted);
-      margin-bottom: 20px;
-    }
-
-    .home-link {
-      display: block;
-      text-align: center;
-      margin-top: 30px;
-      font-size: 14px;
-      color: var(--accent-color);
-      text-decoration: none;
-      transition: opacity 0.2s;
-    }
-
-    .home-link:hover {
-      opacity: 0.7;
-    }
-
-    .stat-section {
-      background-color: var(--card-color);
-      border-radius: 16px;
-      margin-bottom: 24px;
-      box-shadow: 0 0 12px rgba(0, 255, 136, 0.15);
-      overflow: hidden;
-    }
-
-    .stat-title {
-      font-size: 17px;
-      font-weight: 600;
-      padding: 16px 20px;
-      background-color: #2a2a2a;
-      cursor: pointer;
-      border-bottom: 1px solid #333;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      transition: background 0.2s ease;
-      gap: 12px;
-      white-space: nowrap;
-    }
-
-    .stat-title span {
-      white-space: nowrap;
-      text-overflow: ellipsis;
-      overflow: hidden;
-      flex-shrink: 0;
-    }
-
-    .stat-title:hover {
-      background-color: #353535;
-    }
-
-    .stat-list {
-      display: none;
-      padding: 18px 20px 20px;
-    }
-
-    .player, .team {
-      margin: 6px 0;
-      font-size: 15px;
-      color: var(--text-muted);
-    }
-
-    .highlight {
-      color: var(--accent-color);
-      font-weight: 600;
-    }
-
-    #playerSearch {
-      width: 100%;
-      padding: 14px;
-      font-size: 16px;
-      border-radius: 10px;
-      border: none;
-      background-color: #2a2a2a;
-      color: white;
-      margin-bottom: 12px;
-    }
-
-    #playerResult {
-      display: none;
-      background-color: var(--card-color);
+      background: #111;
+      color: #eee;
+      font-family: sans-serif;
       padding: 20px;
-      border-radius: 12px;
-      box-shadow: 0 4px 10px rgba(0, 255, 136, 0.1);
-      animation: fadeIn 0.2s ease-in-out;
     }
-
-    .debug-info {
-      background-color: #2a2a2a;
-      padding: 15px;
-      border-radius: 8px;
-      margin-bottom: 20px;
-      font-family: monospace;
-      font-size: 12px;
-      overflow-x: auto;
+    h2 {
+      margin-top: 30px;
+      border-bottom: 1px solid #444;
+      padding-bottom: 5px;
     }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: translateY(0); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 30px;
     }
-
-    @media (max-width: 480px) {
-      .stat-title {
-        flex-direction: column;
-        align-items: flex-start;
-        font-size: 14px;
-        gap: 4px;
-      }
-
-      .stat-title span {
-        align-self: flex-end;
-        font-size: 14px;
-      }
+    th, td {
+      border: 1px solid #444;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background: #222;
+    }
+    .section {
+      margin-top: 40px;
     }
   </style>
 </head>
 <body>
-  <h1>RKL Live Stats</h1>
-  <p>Click to expand each leaderboard section</p>
-  <div class="loading-bar" id="loading-bar"></div>
-  <div id="debug-info" class="debug-info"></div>
-  <div style="margin-bottom: 30px;">
-    <input id="playerSearch" type="text" placeholder="Search player..." />
-    <div id="playerResult"></div>
-  </div>
-  <div id="stats"></div>
-  <a class="home-link" href="index.html">← Home</a>
+  <h1>RKL Median Rank by Poll Type</h1>
+  <div id="TB"></div>
+  <div id="RBI"></div>
+  <div id="K"></div>
+
   <script>
-    const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
-    const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyYpaO/pub?output=csv';
-    const WORKER_URL = 'https://rkl-worker.tommyek600.workers.dev/';
-
-    let fullPlayerMap = new Map();
-    let playerMedian = 0;
-
-    function getTodayString() {
-      const now = new Date();
-      const est = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
-      if (est.getHours() < 7) est.setDate(est.getDate() - 1);
-      return `${est.getMonth() + 1}/${est.getDate()}`;
+    async function loadCSV(url) {
+      const res = await fetch(url);
+      const text = await res.text();
+      return text.trim().split("\n").map(line => line.split(","));
     }
 
-    function parseCSV(text) {
-      const lines = text.trim().split('\n');
-      const headers = lines[0].split(',').map(h => h.trim());
-      return lines.slice(1).map(line => {
-        const values = line.split(',').map(p => p.trim());
-        const obj = {};
-        headers.forEach((h, i) => obj[h] = values[i]);
-        return obj;
-      });
+    function median(arr) {
+      const sorted = arr.slice().sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      return sorted.length % 2 === 0
+        ? (sorted[mid - 1] + sorted[mid]) / 2
+        : sorted[mid];
     }
 
-    async function fetchKarma(userId) {
-      try {
-        const res = await fetch(`${WORKER_URL}?userId=${encodeURIComponent(userId)}`);
-        const data = await res.json();
-        return {
-          karmaDelta: parseFloat(data?.stats?.karmaDelta || 0),
-          karmaDayRank: parseInt(data?.stats?.karmaDayRank || -1),
-        };
-      } catch {
-        return null;
+    function calculateFilteredMedianRanks(data, pollIndex) {
+      const players = {};
+      for (const row of data) {
+        const [user, playerName, team, pollNum, pickPercent, rank] = row;
+        const poll = parseInt(pollNum);
+        if (poll !== pollIndex) continue;
+        const key = `${playerName}|${team}`;
+        if (!players[key]) players[key] = [];
+        players[key].push({ pick: parseFloat(pickPercent), rank: parseInt(rank) });
       }
+
+      const results = [];
+      for (const key in players) {
+        const [playerName, team] = key.split('|');
+        const entries = players[key];
+        const pickPercents = entries.map(e => e.pick);
+        const medPick = median(pickPercents);
+        const threshold = medPick * 0.9;
+        const qualifying = entries.filter(e => e.pick >= threshold);
+        if (qualifying.length === 0) continue;
+        const medRank = median(qualifying.map(e => e.rank));
+        results.push({ playerName, team, medRank });
+      }
+
+      return results.sort((a, b) => a.medRank - b.medRank);
     }
 
-    document.getElementById('playerSearch').addEventListener('input', e => {
-      const val = e.target.value.trim().toLowerCase();
-      const resDiv = document.getElementById('playerResult');
-
-      if (!val || fullPlayerMap.size === 0) {
-        resDiv.style.display = 'none';
-        resDiv.innerHTML = '';
+    function buildSection(id, title, rows) {
+      const container = document.getElementById(id);
+      container.innerHTML = `<h2>${title}</h2>`;
+      if (rows.length === 0) {
+        container.innerHTML += '<p>No qualifying data available.</p>';
         return;
       }
-
-      const found = Array.from(fullPlayerMap.entries()).find(([user]) => user.toLowerCase().includes(val));
-      if (!found) {
-        resDiv.style.display = 'none';
-        resDiv.innerHTML = '';
-        return;
+      let html = '<table><tr><th>Player</th><th>Team</th><th>Median Rank</th></tr>';
+      for (const row of rows) {
+        html += `<tr><td>${row.playerName}</td><td>${row.team}</td><td>${row.medRank}</td></tr>`;
       }
+      html += '</table>';
+      container.innerHTML += html;
+    }
 
-      const [username, data] = found;
-      const aboveMedian = (data.score - playerMedian).toFixed(2);
-      const relScore = playerMedian ? (data.score / playerMedian).toFixed(2) : '0.00';
+    async function main() {
+      const data = await loadCSV("https://rkl-live.vercel.app/rkl_data.csv");
+      const headers = data.shift();
+      const poll1 = calculateFilteredMedianRanks(data, 1);
+      const poll2 = calculateFilteredMedianRanks(data, 2);
+      const poll3 = calculateFilteredMedianRanks(data, 3);
+      buildSection("TB", "Poll 1: Total Bases", poll1);
+      buildSection("RBI", "Poll 2: RBIs", poll2);
+      buildSection("K", "Poll 3: Strikeouts", poll3);
+    }
 
-      resDiv.innerHTML = `
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-          <div>
-            <div style="font-size: 20px; font-weight: 600;">${username}</div>
-            <div style="font-size: 14px; color: #aaa;">${data.team}</div>
-          </div>
-          <div style="background-color: #333; padding: 6px 12px; border-radius: 6px; font-size: 16px;">${data.score.toFixed(2)}</div>
-        </div>
-        <div style="margin-top: 10px; font-size: 14px;">
-          Karma Rank: <span class="highlight">${data.rank > 0 ? data.rank : 'N/A'}</span><br>
-          Points Above Median: <span class="highlight">${aboveMedian}</span><br>
-          REL Score: <span class="highlight">${relScore}</span>
-        </div>
-      `;
-      resDiv.style.display = 'block';
-    });
-
-    window.addEventListener('DOMContentLoaded', async () => {
-      const stats = document.getElementById('stats');
-      const loadingBar = document.getElementById('loading-bar');
-      const debugInfo = document.getElementById('debug-info');
-
-      loadingBar.textContent = 'Loading...';
-
-      const [scheduleRes, rosterRes] = await Promise.all([
-        axios.get(scheduleCsvUrl),
-        axios.get(rosterCsvUrl),
-      ]);
-
-      const today = getTodayString();
-      const games = parseCSV(scheduleRes.data).filter(g => g.Date?.trim() === today);
-      const teamsToday = new Set(games.flatMap(g => [g['Team 1'], g['Team 2']]));
-      const allPlayers = parseCSV(rosterRes.data);
-      const players = allPlayers.filter(p => p['playing?']?.toLowerCase() === 'yes' && teamsToday.has(p.Team));
-      const captains = allPlayers.filter(p => p['playing?']?.toLowerCase() === 'yes' && teamsToday.has(p.Team) && p.Role?.toLowerCase() === 'captain');
-
-      // DEBUG: Log role information
-      console.log('All unique roles found:', [...new Set(allPlayers.map(p => p.Role).filter(r => r))]);
-      console.log('Players playing today:', players.length);
-      console.log('Captains found (initial filter):', captains.length);
-      
-      // Show role distribution in debug info
-      const roleDistribution = {};
-      allPlayers.forEach(p => {
-        if (p.Role) {
-          const role = p.Role.trim();
-          roleDistribution[role] = (roleDistribution[role] || 0) + 1;
-        }
-      });
-      
-      debugInfo.innerHTML = `
-        <strong>Debug Info:</strong><br>
-        Today's date: ${today}<br>
-        Teams playing today: [${Array.from(teamsToday).join(', ')}]<br>
-        Players playing today: ${players.length}<br>
-        Role distribution: ${JSON.stringify(roleDistribution, null, 2)}<br>
-        Captains found (initial): ${captains.length}
-      `;
-
-      const karmaMap = new Map();
-      const captainKarmaMap = new Map();
-      const rankEntries = [];
-      let rankEligibleCount = 0;
-      let loaded = 0;
-      let captainsProcessed = 0;
-
-      for (let i = 0; i < players.length; i += 10) {
-        await Promise.all(players.slice(i, i + 10).map(async p => {
-          const userId = p['User ID']?.trim();
-          const userAt = p['User @']?.replace(/^@/, '');
-          if (!userId || userId.toLowerCase() === 'not found') return;
-          const data = await fetchKarma(userId);
-          if (data !== null) {
-            const { karmaDelta, karmaDayRank } = data;
-            const playerData = { team: p.Team, score: karmaDelta, rank: karmaDayRank };
-            karmaMap.set(userAt, playerData);
-            
-            // DEBUG: More flexible captain detection
-            const role = p.Role?.trim().toLowerCase();
-            console.log(`Player ${userAt}: Role = "${p.Role}" (normalized: "${role}")`);
-            
-            if (role === 'captain' || role === 'c' || role === 'cap') {
-              captainKarmaMap.set(userAt, playerData);
-              captainsProcessed++;
-              console.log(`Added captain: ${userAt} from team ${p.Team}`);
-            }
-            
-            if (karmaDayRank > 0) {
-              rankEntries.push({ user: userAt, team: p.Team, rank: karmaDayRank });
-              if (karmaDayRank <= 1000) rankEligibleCount++;
-            }
-            loaded++;
-            loadingBar.textContent = `Loaded ${loaded} out of ${players.length} players...`;
-          }
-        }));
-      }
-
-      // Update debug info with final counts
-      debugInfo.innerHTML += `<br>Captains processed with karma data: ${captainsProcessed}<br>Captain karma map size: ${captainKarmaMap.size}`;
-
-      fullPlayerMap = karmaMap;
-      const teamScores = {};
-      for (let [user, { team, score }] of karmaMap.entries()) {
-        teamScores[team] = (teamScores[team] || 0) + score;
-      }
-
-      const teamSorted = Object.entries(teamScores).sort((a,b)=>b[1]-a[1]);
-      const playerSorted = Array.from(karmaMap.entries()).sort((a,b)=>b[1].score-a[1].score);
-      const captainSorted = Array.from(captainKarmaMap.entries()).sort((a,b)=>b[1].score-a[1].score);
-      
-      const teamValues = Object.values(teamScores);
-      const playerValues = Array.from(karmaMap.values()).map(p => p.score);
-      const teamMedian = teamValues.sort((a,b)=>a-b)[Math.floor(teamValues.length/2)] || 0;
-      playerMedian = playerValues.sort((a,b)=>a-b)[Math.floor(playerValues.length/2)] || 0;
-
-      const relScores = Array.from(karmaMap.entries()).map(([user, val]) => {
-        const rel = playerMedian ? (val.score / playerMedian) : 0;
-        return { user, team: val.team, score: val.score, rel: rel.toFixed(2) };
-      }).sort((a,b)=>b.rel-a.rel);
-
-      const rankSorted = rankEntries.sort((a, b) => a.rank - b.rank);
-      const top5Ranks = rankSorted.slice(0, 5);
-      const bottom5Ranks = rankSorted.slice(-5).reverse();
-
-      function buildSection(title, list, key, type) {
-        const id = `${type}-${key}-${title.replace(/\s+/g,'-')}`;
-        const preview = type === 'player'
-          ? `${list[0].user} (${list[0].team}) - ${key === 'rel' ? list[0].rel : list[0][key]}`
-          : `${list[0][0]} - ${list[0][1].toFixed(1)}`;
-        return `
-          <div class="stat-section">
-            <div class="stat-title" data-target="${id}">
-              ${title}: <span class="highlight">${preview}</span>
-            </div>
-            <div class="stat-list" id="${id}">
-              ${list.map(x => {
-                if (type === 'player') {
-                  return `<div class="player">${x.user} (${x.team}) - ${x[key]}</div>`;
-                } else {
-                  return `<div class="team">${x[0]}: ${x[1].toFixed(1)}</div>`;
-                }
-              }).join('')}
-            </div>
-          </div>`;
-      }
-
-      loadingBar.textContent = '';
-      
-      // Build captain leaderboard sections with debug info
-      console.log('Building captain sections, captainSorted.length:', captainSorted.length);
-      const captainSections = captainSorted.length > 0 ? `
-        ${buildSection('Top 5 Captains', captainSorted.slice(0,5).map(([user, val]) => ({ user, ...val })), 'score', 'player')}
-        ${captainSorted.length > 5 ? buildSection('Bottom 5 Captains', captainSorted.slice(-5).reverse().map(([user, val]) => ({ user, ...val })), 'score', 'player') : ''}
-      ` : '<div class="stat-section"><div class="stat-title">No Captains Found</div></div>';
-
-      stats.innerHTML = `
-        ${buildSection('Top 3 Teams', teamSorted.slice(0,3), 1, 'team')}
-        ${buildSection('Bottom 3 Teams', teamSorted.slice(-3).reverse(), 1, 'team')}
-        ${captainSections}
-        ${buildSection('Top 5 Players', playerSorted.slice(0,5).map(([user, val]) => ({ user, ...val })), 'score', 'player')}
-        ${buildSection('Bottom 5 Players', playerSorted.slice(-5).reverse().map(([user, val]) => ({ user, ...val })), 'score', 'player')}
-        ${buildSection('League Median Team Score', [["Median", teamMedian]], 1, 'team')}
-        ${buildSection('League Median Player Score', [["Median", playerMedian]], 1, 'team')}
-        ${buildSection('Top 5 REL (Relative Performance)', relScores.slice(0,5), 'rel', 'player')}
-        ${buildSection('Top 5 User Karma Rank', top5Ranks, 'rank', 'player')}
-        ${buildSection('Bottom 5 User Karma Rank', bottom5Ranks, 'rank', 'player')}
-        <div class="stat-section">
-          <div class="stat-title">
-            Total Players Ranked Today: <span class="highlight">${rankEligibleCount}</span>
-          </div>
-        </div>
-      `;
-
-      // Add click-to-toggle event on stat titles:
-      stats.addEventListener('click', e => {
-        const title = e.target.closest('.stat-title');
-        if (!title) return;
-        const targetId = title.dataset.target;
-        if (!targetId) return;
-
-        const listEl = document.getElementById(targetId);
-        if (!listEl) return;
-
-        if (listEl.style.display === 'block') {
-          listEl.style.display = 'none';
-        } else {
-          listEl.style.display = 'block';
-        }
-      });
-    });
+    main();
   </script>
 </body>
 </html>
