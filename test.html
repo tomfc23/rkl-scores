@@ -127,6 +127,16 @@
       animation: fadeIn 0.2s ease-in-out;
     }
 
+    .debug-info {
+      background-color: #2a2a2a;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-family: monospace;
+      font-size: 12px;
+      overflow-x: auto;
+    }
+
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(8px); }
       to { opacity: 1; transform: translateY(0); }
@@ -151,6 +161,7 @@
   <h1>RKL Live Stats</h1>
   <p>Click to expand each leaderboard section</p>
   <div class="loading-bar" id="loading-bar"></div>
+  <div id="debug-info" class="debug-info"></div>
   <div style="margin-bottom: 30px;">
     <input id="playerSearch" type="text" placeholder="Search player..." />
     <div id="playerResult"></div>
@@ -159,7 +170,7 @@
   <a class="home-link" href="index.html">← Home</a>
   <script>
     const scheduleCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgy7uZ8caLI4hTPKSjl9e7ztFaM9vdBk4vXDQbPtcybqzXGOm3FMpSJiyrRTzIM3K70z_6XbgBGP_0/pub?output=csv';
-    const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyDYpaO/pub?output=csv';
+    const rosterCsvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRe5WoA--wsfCCCvtL8QgQKsJv0z1AIUTY7k5NEYgUF-Ipu3Iotxkcbw7D-Cme6YGUksHy3DmyYpaO/pub?output=csv';
     const WORKER_URL = 'https://rkl-worker.tommyek600.workers.dev/';
 
     let fullPlayerMap = new Map();
@@ -237,6 +248,7 @@
     window.addEventListener('DOMContentLoaded', async () => {
       const stats = document.getElementById('stats');
       const loadingBar = document.getElementById('loading-bar');
+      const debugInfo = document.getElementById('debug-info');
 
       loadingBar.textContent = 'Loading...';
 
@@ -252,11 +264,35 @@
       const players = allPlayers.filter(p => p['playing?']?.toLowerCase() === 'yes' && teamsToday.has(p.Team));
       const captains = allPlayers.filter(p => p['playing?']?.toLowerCase() === 'yes' && teamsToday.has(p.Team) && p.Role?.toLowerCase() === 'captain');
 
+      // DEBUG: Log role information
+      console.log('All unique roles found:', [...new Set(allPlayers.map(p => p.Role).filter(r => r))]);
+      console.log('Players playing today:', players.length);
+      console.log('Captains found (initial filter):', captains.length);
+      
+      // Show role distribution in debug info
+      const roleDistribution = {};
+      allPlayers.forEach(p => {
+        if (p.Role) {
+          const role = p.Role.trim();
+          roleDistribution[role] = (roleDistribution[role] || 0) + 1;
+        }
+      });
+      
+      debugInfo.innerHTML = `
+        <strong>Debug Info:</strong><br>
+        Today's date: ${today}<br>
+        Teams playing today: [${Array.from(teamsToday).join(', ')}]<br>
+        Players playing today: ${players.length}<br>
+        Role distribution: ${JSON.stringify(roleDistribution, null, 2)}<br>
+        Captains found (initial): ${captains.length}
+      `;
+
       const karmaMap = new Map();
       const captainKarmaMap = new Map();
       const rankEntries = [];
       let rankEligibleCount = 0;
       let loaded = 0;
+      let captainsProcessed = 0;
 
       for (let i = 0; i < players.length; i += 10) {
         await Promise.all(players.slice(i, i + 10).map(async p => {
@@ -269,9 +305,14 @@
             const playerData = { team: p.Team, score: karmaDelta, rank: karmaDayRank };
             karmaMap.set(userAt, playerData);
             
-            // If this player is a captain, also add to captain map
-            if (p.Role?.toLowerCase() === 'captain') {
+            // DEBUG: More flexible captain detection
+            const role = p.Role?.trim().toLowerCase();
+            console.log(`Player ${userAt}: Role = "${p.Role}" (normalized: "${role}")`);
+            
+            if (role === 'captain' || role === 'c' || role === 'cap') {
               captainKarmaMap.set(userAt, playerData);
+              captainsProcessed++;
+              console.log(`Added captain: ${userAt} from team ${p.Team}`);
             }
             
             if (karmaDayRank > 0) {
@@ -283,6 +324,9 @@
           }
         }));
       }
+
+      // Update debug info with final counts
+      debugInfo.innerHTML += `<br>Captains processed with karma data: ${captainsProcessed}<br>Captain karma map size: ${captainKarmaMap.size}`;
 
       fullPlayerMap = karmaMap;
       const teamScores = {};
@@ -332,11 +376,12 @@
 
       loadingBar.textContent = '';
       
-      // Build captain leaderboard sections
+      // Build captain leaderboard sections with debug info
+      console.log('Building captain sections, captainSorted.length:', captainSorted.length);
       const captainSections = captainSorted.length > 0 ? `
         ${buildSection('Top 5 Captains', captainSorted.slice(0,5).map(([user, val]) => ({ user, ...val })), 'score', 'player')}
         ${captainSorted.length > 5 ? buildSection('Bottom 5 Captains', captainSorted.slice(-5).reverse().map(([user, val]) => ({ user, ...val })), 'score', 'player') : ''}
-      ` : '';
+      ` : '<div class="stat-section"><div class="stat-title">No Captains Found</div></div>';
 
       stats.innerHTML = `
         ${buildSection('Top 3 Teams', teamSorted.slice(0,3), 1, 'team')}
