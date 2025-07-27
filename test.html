@@ -6,7 +6,7 @@
   <title>RKL Live Stats</title>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <style>
-    :root {
+   :root {
       --bg-color: #121212;
       --card-color: #1e1e1e;
       --accent-color: #00ff88;
@@ -248,9 +248,12 @@
       const today = getTodayString();
       const games = parseCSV(scheduleRes.data).filter(g => g.Date?.trim() === today);
       const teamsToday = new Set(games.flatMap(g => [g['Team 1'], g['Team 2']]));
-      const players = parseCSV(rosterRes.data).filter(p => p['playing?']?.toLowerCase() === 'yes' && teamsToday.has(p.Team));
+      const allPlayers = parseCSV(rosterRes.data);
+      const players = allPlayers.filter(p => p['playing?']?.toLowerCase() === 'yes' && teamsToday.has(p.Team));
+      const captains = allPlayers.filter(p => p['playing?']?.toLowerCase() === 'yes' && teamsToday.has(p.Team) && p.Role?.toLowerCase() === 'captain');
 
       const karmaMap = new Map();
+      const captainKarmaMap = new Map();
       const rankEntries = [];
       let rankEligibleCount = 0;
       let loaded = 0;
@@ -263,7 +266,14 @@
           const data = await fetchKarma(userId);
           if (data !== null) {
             const { karmaDelta, karmaDayRank } = data;
-            karmaMap.set(userAt, { team: p.Team, score: karmaDelta, rank: karmaDayRank });
+            const playerData = { team: p.Team, score: karmaDelta, rank: karmaDayRank };
+            karmaMap.set(userAt, playerData);
+            
+            // If this player is a captain, also add to captain map
+            if (p.Role?.toLowerCase() === 'captain') {
+              captainKarmaMap.set(userAt, playerData);
+            }
+            
             if (karmaDayRank > 0) {
               rankEntries.push({ user: userAt, team: p.Team, rank: karmaDayRank });
               if (karmaDayRank <= 1000) rankEligibleCount++;
@@ -282,6 +292,8 @@
 
       const teamSorted = Object.entries(teamScores).sort((a,b)=>b[1]-a[1]);
       const playerSorted = Array.from(karmaMap.entries()).sort((a,b)=>b[1].score-a[1].score);
+      const captainSorted = Array.from(captainKarmaMap.entries()).sort((a,b)=>b[1].score-a[1].score);
+      
       const teamValues = Object.values(teamScores);
       const playerValues = Array.from(karmaMap.values()).map(p => p.score);
       const teamMedian = teamValues.sort((a,b)=>a-b)[Math.floor(teamValues.length/2)] || 0;
@@ -296,40 +308,41 @@
       const top5Ranks = rankSorted.slice(0, 5);
       const bottom5Ranks = rankSorted.slice(-5).reverse();
 
-      // Captains only (playing today)
-      const captainScores = players
-        .filter(p => p.Role?.toLowerCase() === 'captain')
-        .map(p => {
-          const userAt = p['User @']?.replace(/^@/, '');
-          const entry = karmaMap.get(userAt);
-          return entry ? { user: userAt, team: entry.team, score: entry.score } : null;
-        })
-        .filter(Boolean)
-        .sort((a, b) => b.score - a.score);
-
-      function buildSection(title, list, valueKey, type) {
-  if (!list || list.length === 0) return '';
-
-  const topValue = list[0][valueKey];
-  const isNumber = typeof topValue === 'number';
-  const suffix = isNumber ? '' : '%';
-
-  let html = `<div class="section"><h3>${title}</h3><ul>`;
-  list.forEach((entry, i) => {
-    const display = isNumber ? `${entry[valueKey]}` : `${(entry[valueKey] * 100).toFixed(1)}${suffix}`;
-    html += `<li><strong>${entry.user || entry.team}</strong> — ${display}</li>`;
-  });
-  html += '</ul></div>';
-  return html;
-}
-
+      function buildSection(title, list, key, type) {
+        const id = `${type}-${key}-${title.replace(/\s+/g,'-')}`;
+        const preview = type === 'player'
+          ? `${list[0].user} (${list[0].team}) - ${key === 'rel' ? list[0].rel : list[0][key]}`
+          : `${list[0][0]} - ${list[0][1].toFixed(1)}`;
+        return `
+          <div class="stat-section">
+            <div class="stat-title" data-target="${id}">
+              ${title}: <span class="highlight">${preview}</span>
+            </div>
+            <div class="stat-list" id="${id}">
+              ${list.map(x => {
+                if (type === 'player') {
+                  return `<div class="player">${x.user} (${x.team}) - ${x[key]}</div>`;
+                } else {
+                  return `<div class="team">${x[0]}: ${x[1].toFixed(1)}</div>`;
+                }
+              }).join('')}
+            </div>
+          </div>`;
+      }
 
       loadingBar.textContent = '';
+      
+      // Build captain leaderboard sections
+      const captainSections = captainSorted.length > 0 ? `
+        ${buildSection('Top 5 Captains', captainSorted.slice(0,5).map(([user, val]) => ({ user, ...val })), 'score', 'player')}
+        ${captainSorted.length > 5 ? buildSection('Bottom 5 Captains', captainSorted.slice(-5).reverse().map(([user, val]) => ({ user, ...val })), 'score', 'player') : ''}
+      ` : '';
+
       stats.innerHTML = `
         ${buildSection('Top 3 Teams', teamSorted.slice(0,3), 1, 'team')}
         ${buildSection('Bottom 3 Teams', teamSorted.slice(-3).reverse(), 1, 'team')}
+        ${captainSections}
         ${buildSection('Top 5 Players', playerSorted.slice(0,5).map(([user, val]) => ({ user, ...val })), 'score', 'player')}
-        ${buildSection('Top Captains by Karma Delta', captainScores, 'score', 'player')}
         ${buildSection('Bottom 5 Players', playerSorted.slice(-5).reverse().map(([user, val]) => ({ user, ...val })), 'score', 'player')}
         ${buildSection('League Median Team Score', [["Median", teamMedian]], 1, 'team')}
         ${buildSection('League Median Player Score', [["Median", playerMedian]], 1, 'team')}
@@ -343,14 +356,21 @@
         </div>
       `;
 
+      // Add click-to-toggle event on stat titles:
       stats.addEventListener('click', e => {
         const title = e.target.closest('.stat-title');
         if (!title) return;
         const targetId = title.dataset.target;
         if (!targetId) return;
+
         const listEl = document.getElementById(targetId);
         if (!listEl) return;
-        listEl.style.display = listEl.style.display === 'block' ? 'none' : 'block';
+
+        if (listEl.style.display === 'block') {
+          listEl.style.display = 'none';
+        } else {
+          listEl.style.display = 'block';
+        }
       });
     });
   </script>
