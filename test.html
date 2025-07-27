@@ -307,27 +307,22 @@
         .filter(Boolean)
         .sort((a, b) => b.score - a.score);
 
-      function buildSection(title, list, key, type) {
-        const id = `${type}-${key}-${title.replace(/\s+/g,'-')}`;
-        const preview = type === 'player'
-          ? `${list[0].user} (${list[0].team}) - ${key === 'rel' ? list[0].rel : list[0][key]}`
-          : `${list[0][0]} - ${list[0][1].toFixed(1)}`;
-        return `
-          <div class="stat-section">
-            <div class="stat-title" data-target="${id}">
-              ${title}: <span class="highlight">${preview}</span>
-            </div>
-            <div class="stat-list" id="${id}">
-              ${list.map(x => {
-                if (type === 'player') {
-                  return `<div class="player">${x.user} (${x.team}) - ${x[key]}</div>`;
-                } else {
-                  return `<div class="team">${x[0]}: ${x[1].toFixed(1)}</div>`;
-                }
-              }).join('')}
-            </div>
-          </div>`;
-      }
+      function buildSection(title, list, valueKey, type) {
+  if (!list || list.length === 0) return '';
+
+  const topValue = list[0][valueKey];
+  const isNumber = typeof topValue === 'number';
+  const suffix = isNumber ? '' : '%';
+
+  let html = `<div class="section"><h3>${title}</h3><ul>`;
+  list.forEach((entry, i) => {
+    const display = isNumber ? `${entry[valueKey]}` : `${(entry[valueKey] * 100).toFixed(1)}${suffix}`;
+    html += `<li><strong>${entry.user || entry.team}</strong> — ${display}</li>`;
+  });
+  html += '</ul></div>';
+  return html;
+}
+
 
       loadingBar.textContent = '';
       stats.innerHTML = `
